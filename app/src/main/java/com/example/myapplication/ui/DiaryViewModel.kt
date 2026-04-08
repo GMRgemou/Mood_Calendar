@@ -43,6 +43,8 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         attachmentUris: String = "",
         audioUris: String = "",
         audioTranscriptions: String = "",
+        audioNames: String = "",
+        audioTranscriptionsVisibility: String = "",
         mood: String = "",
         location: String = ""
     ) {
@@ -56,6 +58,8 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 attachmentUris = attachmentUris,
                 audioUris = audioUris,
                 audioTranscriptions = audioTranscriptions,
+                audioNames = audioNames,
+                audioTranscriptionsVisibility = audioTranscriptionsVisibility,
                 mood = mood,
                 location = location
             )
