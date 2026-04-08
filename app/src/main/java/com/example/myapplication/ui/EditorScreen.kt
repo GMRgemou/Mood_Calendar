@@ -1,16 +1,17 @@
 package com.example.myapplication.ui
 
+import com.example.myapplication.R
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
-import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
+import org.vosk.Model
+import org.vosk.Recognizer
+import org.vosk.android.StorageService
+import org.json.JSONObject
 import android.provider.MediaStore
 import android.provider.OpenableColumns
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -34,11 +35,16 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -47,7 +53,9 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.accompanist.permissions.rememberPermissionState
+import com.google.accompanist.permissions.shouldShowRationale
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.google.android.gms.location.LocationServices
@@ -55,15 +63,66 @@ import com.google.android.gms.location.Priority
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.whisper.java.WhisperLib
-import com.whisper.java.WhisperUtil
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.*
+
+@Composable
+fun AudioPropertiesDialog(
+    initialName: String,
+    initialVisibility: Boolean,
+    initialTranscription: String,
+    onConfirm: (String, Boolean, String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var name by remember { mutableStateOf(initialName) }
+    var visibility by remember { mutableStateOf(initialVisibility) }
+    var transcription by remember { mutableStateOf(initialTranscription) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("编辑录音属性") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("录音名称") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("显示语音转文字内容")
+                    Switch(
+                        checked = visibility,
+                        onCheckedChange = { visibility = it }
+                    )
+                }
+                OutlinedTextField(
+                    value = transcription,
+                    onValueChange = { transcription = it },
+                    label = { Text("语音转文字内容") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(name, visibility, transcription) }) { Text("确定") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        }
+    )
+}
 
 @Composable
 fun MoodSelectionDialog(
@@ -109,21 +168,21 @@ fun LocationInputDialog(
     var text by remember { mutableStateOf(currentLocation) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Enter Location") },
+        title = { Text(stringResource(R.string.location_dialog_title)) },
         text = {
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },
-                placeholder = { Text("Where are you?") },
+                placeholder = { Text(stringResource(R.string.location_dialog_placeholder)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
         },
         confirmButton = {
-            TextButton(onClick = { onLocationConfirmed(text) }) { Text("OK") }
+            TextButton(onClick = { onLocationConfirmed(text) }) { Text(stringResource(R.string.location_dialog_ok)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.location_dialog_cancel)) }
         }
     )
 }
@@ -206,7 +265,7 @@ fun PhotoViewerDialog(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun EditorToolbar(
     onAddImage: () -> Unit,
@@ -219,6 +278,17 @@ fun EditorToolbar(
     isRecording: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val onboardingPrefs = remember { context.getSharedPreferences("onboarding", 0) }
+    var hasSeenLocationTip by remember { mutableStateOf(onboardingPrefs.getBoolean("seen_location_tip", false)) }
+    val locationTipState = rememberTooltipState(isPersistent = true)
+    LaunchedEffect(Unit) {
+        if (!hasSeenLocationTip) {
+            hasSeenLocationTip = true
+            onboardingPrefs.edit().putBoolean("seen_location_tip", true).apply()
+            locationTipState.show()
+        }
+    }
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
@@ -248,23 +318,41 @@ fun EditorToolbar(
                 ) {
                     Icon(
                         if (isRecording) Icons.Default.Stop else Icons.Default.Mic,
-                        contentDescription = "语音转文字",
+                        contentDescription = "录音",
                         tint = if (isRecording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                     )
                 }
-                // 定位按钮 (点击自动获取，长按手动输入)
-                Box(
-                    modifier = Modifier
-                        .minimumInteractiveComponentSize()
-                        .size(40.dp)
-                        .clip(androidx.compose.foundation.shape.CircleShape)
-                        .combinedClickable(
-                            onClick = onAddLocation,
-                            onLongClick = onAddLocationManual
-                        ),
-                    contentAlignment = Alignment.Center
+                TooltipBox(
+                    positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                    tooltip = { PlainTooltip { Text(stringResource(R.string.tip_long_press_location)) } },
+                    state = locationTipState,
+                    focusable = true
                 ) {
-                    Icon(Icons.Default.LocationOn, contentDescription = "定位", tint = MaterialTheme.colorScheme.primary)
+                    Box(
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .size(40.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .combinedClickable(
+                                onClick = {
+                                    if (!hasSeenLocationTip) {
+                                        hasSeenLocationTip = true
+                                        onboardingPrefs.edit().putBoolean("seen_location_tip", true).apply()
+                                    }
+                                    onAddLocation()
+                                },
+                                onLongClick = {
+                                    if (!hasSeenLocationTip) {
+                                        hasSeenLocationTip = true
+                                        onboardingPrefs.edit().putBoolean("seen_location_tip", true).apply()
+                                    }
+                                    onAddLocationManual()
+                                }
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.LocationOn, contentDescription = stringResource(R.string.location_content_description), tint = MaterialTheme.colorScheme.primary)
+                    }
                 }
                 IconButton(onClick = onAddMood) {
                     Icon(Icons.Default.SentimentSatisfied, contentDescription = "心情", tint = MaterialTheme.colorScheme.primary)
@@ -274,7 +362,7 @@ fun EditorToolbar(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun EditorScreen(
     entryId: Long,
@@ -294,17 +382,92 @@ fun EditorScreen(
     var attachmentUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var audioUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var audioTranscriptions by remember { mutableStateOf<Map<Uri, String>>(emptyMap()) }
+    var audioNames by remember { mutableStateOf<Map<Uri, String>>(emptyMap()) }
+    var audioTranscriptionsVisibility by remember { mutableStateOf<Map<Uri, Boolean>>(emptyMap()) }
     var mood by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
 
     var isRecording by remember { mutableStateOf(false) }
     var audioRecord by remember { mutableStateOf<AudioRecord?>(null) }
     var currentAudioFile by remember { mutableStateOf<File?>(null) }
-    var currentTranscription by remember { mutableStateOf("") }
+
+    var voskModel by remember { mutableStateOf<Model?>(null) }
+    var voskRecognizer by remember { mutableStateOf<Recognizer?>(null) }
+    var isVoskReady by remember { mutableStateOf(false) }
     
-    // Whisper TFLite (whisper_java) 相关
-    var whisperLib by remember { mutableStateOf<WhisperLib?>(null) }
-    val modelName = "whisper-tiny.tflite"
+    val scope = rememberCoroutineScope()
+
+    // 辅助函数：寻找模型实际所在的目录 (含有 am 文件夹的目录)
+    fun findModelDir(root: File): File? {
+        if (File(root, "am").exists() && File(root, "conf").exists()) {
+            return root
+        }
+        root.listFiles()?.forEach { file ->
+            if (file.isDirectory) {
+                val found = findModelDir(file)
+                if (found != null) return found
+            }
+        }
+        return null
+    }
+
+    fun updateWavHeader(file: File, totalAudioLen: Long) {
+        val totalDataLen = totalAudioLen + 36
+        val sampleRate = 16000L
+        val channels = 1
+        val byteRate = 16 * sampleRate * channels / 8
+        val header = ByteArray(44)
+        
+        header[0] = 'R'.toByte() // RIFF/WAVE header
+        header[1] = 'I'.toByte()
+        header[2] = 'F'.toByte()
+        header[3] = 'F'.toByte()
+        header[4] = (totalDataLen and 0xffL).toByte()
+        header[5] = ((totalDataLen shr 8) and 0xffL).toByte()
+        header[6] = ((totalDataLen shr 16) and 0xffL).toByte()
+        header[7] = ((totalDataLen shr 24) and 0xffL).toByte()
+        header[8] = 'W'.toByte()
+        header[9] = 'A'.toByte()
+        header[10] = 'V'.toByte()
+        header[11] = 'E'.toByte()
+        header[12] = 'f'.toByte() // 'fmt ' chunk
+        header[13] = 'm'.toByte()
+        header[14] = 't'.toByte()
+        header[15] = ' '.toByte()
+        header[16] = 16 // 4 bytes: size of 'fmt ' chunk
+        header[17] = 0
+        header[18] = 0
+        header[19] = 0
+        header[20] = 1 // format = 1 (PCM)
+        header[21] = 0
+        header[22] = channels.toByte()
+        header[23] = 0
+        header[24] = (sampleRate and 0xffL).toByte()
+        header[25] = ((sampleRate shr 8) and 0xffL).toByte()
+        header[26] = ((sampleRate shr 16) and 0xffL).toByte()
+        header[27] = ((sampleRate shr 24) and 0xffL).toByte()
+        header[28] = (byteRate and 0xffL).toByte()
+        header[29] = ((byteRate shr 8) and 0xffL).toByte()
+        header[30] = ((byteRate shr 16) and 0xffL).toByte()
+        header[31] = ((byteRate shr 24) and 0xffL).toByte()
+        header[32] = (1 * 16 / 8).toByte() // block align
+        header[33] = 0
+        header[34] = 16 // bits per sample
+        header[35] = 0
+        header[36] = 'd'.toByte()
+        header[37] = 'a'.toByte()
+        header[38] = 't'.toByte()
+        header[39] = 'a'.toByte()
+        header[40] = (totalAudioLen and 0xffL).toByte()
+        header[41] = ((totalAudioLen shr 8) and 0xffL).toByte()
+        header[42] = ((totalAudioLen shr 16) and 0xffL).toByte()
+        header[43] = ((totalAudioLen shr 24) and 0xffL).toByte()
+        
+        RandomAccessFile(file, "rw").use { raf ->
+            raf.seek(0)
+            raf.write(header)
+        }
+    }
 
     LaunchedEffect(Unit) {
         // 1. 加载现有日记内容 (如果是编辑模式)
@@ -320,41 +483,106 @@ fun EditorScreen(
                     imageUris = it.imageUris.split(",").map { uriStr -> Uri.parse(uriStr) }
                 }
                 if (it.audioUris.isNotEmpty()) {
-                    val uris = it.audioUris.split(",").map { uriStr -> Uri.parse(uriStr) }
+                    val uris = it.audioUris.split(",").filter { s -> s.isNotEmpty() }.map { s -> Uri.parse(s) }
                     val transcriptions = it.audioTranscriptions.split("|")
+                    val names = it.audioNames.split("|")
+                    val visibilities = it.audioTranscriptionsVisibility.split("|")
+                    
                     audioUris = uris
                     audioTranscriptions = uris.zip(transcriptions).toMap()
+                    audioNames = if (names.size == uris.size) uris.zip(names).toMap() else emptyMap()
+                    audioTranscriptionsVisibility = if (visibilities.size == uris.size) {
+                        uris.zip(visibilities.map { v -> v == "1" }).toMap()
+                    } else {
+                        uris.associateWith { true }
+                    }
                 }
             }
         }
 
-        // 2. 初始化 WhisperLib
+        // 2. 初始化 Vosk
         withContext(Dispatchers.IO) {
             try {
-                whisperLib = WhisperLib.init(context.assets, "models/$modelName")
-                if (whisperLib == null) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Whisper 模型加载失败，请检查 assets/models 目录", Toast.LENGTH_LONG).show()
+                // 尝试解压或加载已存在的模型
+                StorageService.unpack(context, "model-cn", "model", 
+                    object : StorageService.Callback<Model> {
+                        override fun onComplete(model: Model) {
+                            // 使用 unpack 成功提供的 model
+                            voskModel = model
+                            try {
+                                voskRecognizer = Recognizer(model, 16000f)
+                                isVoskReady = true
+                                Log.d("EditorScreen", "Vosk model loaded successfully via unpack callback")
+                            } catch (e: Exception) {
+                                Log.e("EditorScreen", "Vosk recognizer init failed with provided model", e)
+                                // 如果直接使用失败，再尝试搜索子目录（以防结构嵌套）
+                                scope.launch(Dispatchers.IO) {
+                                    val targetDir = File(context.filesDir, "model")
+                                    val actualModelDir = findModelDir(targetDir)
+                                    if (actualModelDir != null && actualModelDir.absolutePath != targetDir.absolutePath) {
+                                        try {
+                                            val nestedModel = Model(actualModelDir.absolutePath)
+                                            voskModel = nestedModel
+                                            voskRecognizer = Recognizer(nestedModel, 16000f)
+                                            isVoskReady = true
+                                            Log.d("EditorScreen", "Vosk model recovered from nested dir: ${actualModelDir.absolutePath}")
+                                            return@launch
+                                        } catch (ex: Exception) {
+                                            Log.e("EditorScreen", "Vosk nested recovery failed", ex)
+                                        }
+                                    }
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "语音识别初始化失败", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    object : StorageService.Callback<java.io.IOException> {
+                        override fun onComplete(e: java.io.IOException) {
+                            Log.e("EditorScreen", "Vosk unpack error (sync failed)", e)
+                            scope.launch(Dispatchers.IO) {
+                                // 即使同步报错，也尝试寻找是否已有解压好的模型
+                                val targetDir = File(context.filesDir, "model")
+                                val actualModelDir = findModelDir(targetDir)
+                                if (actualModelDir != null) {
+                                    try {
+                                        val model = Model(actualModelDir.absolutePath)
+                                        voskModel = model
+                                        voskRecognizer = Recognizer(model, 16000f)
+                                        isVoskReady = true
+                                        Log.d("EditorScreen", "Vosk model recovered from existing storage: ${actualModelDir.absolutePath}")
+                                        return@launch
+                                    } catch (ex: Exception) {
+                                        Log.e("EditorScreen", "Vosk recovery from existing failed", ex)
+                                    }
+                                }
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, "语音模型准备失败: ${e.message}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
                     }
-                }
-            } catch (e: Throwable) {
-                Log.e("EditorScreen", "WhisperLib init failed: ${e.message}", e)
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "初始化失败: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
+                )
+            } catch (e: Exception) {
+                Log.e("EditorScreen", "Vosk StorageService critical failure", e)
             }
         }
     }
 
     DisposableEffect(Unit) {
         onDispose {
-            whisperLib?.release()
+            voskRecognizer?.close()
+            voskModel?.close()
         }
     }
 
     var selectedViewerUri by remember { mutableStateOf<Uri?>(null) }
     var showMoodDialog by remember { mutableStateOf(false) }
     var showLocationDialog by remember { mutableStateOf(false) }
+    var showAudioPropertiesDialog by remember { mutableStateOf(false) }
+    var editingAudioUri by remember { mutableStateOf<Uri?>(null) }
+    var editableLocationText by remember { mutableStateOf("") }
 
     val datePickerState = rememberDatePickerState(initialSelectedDateMillis = selectedDate)
 
@@ -362,52 +590,103 @@ fun EditorScreen(
     val cameraPermissionState = rememberPermissionState(android.Manifest.permission.CAMERA)
     // 录音权限状态
     val audioPermissionState = rememberPermissionState(android.Manifest.permission.RECORD_AUDIO)
-    // 位置权限状态
-    val locationPermissionState = rememberPermissionState(android.Manifest.permission.ACCESS_COARSE_LOCATION)
+    // 位置权限状态 (使用多权限请求)
+    val locationPermissionsState = rememberMultiplePermissionsState(
+        permissions = listOf(
+            android.Manifest.permission.ACCESS_FINE_LOCATION,
+            android.Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+    )
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
-    val scope = rememberCoroutineScope()
 
     fun fetchCurrentLocation() {
-        if (locationPermissionState.status.isGranted) {
+        if (locationPermissionsState.allPermissionsGranted || locationPermissionsState.revokedPermissions.size < locationPermissionsState.permissions.size) {
             try {
-                fusedLocationClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null)
-                    .addOnSuccessListener { loc ->
-                        if (loc != null) {
-                            scope.launch {
-                                try {
-                                    val geocoder = android.location.Geocoder(context, Locale.getDefault())
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                        geocoder.getFromLocation(loc.latitude, loc.longitude, 1) { addresses ->
-                                            if (addresses.isNotEmpty()) {
-                                                location = addresses[0].getAddressLine(0) ?: "${loc.latitude}, ${loc.longitude}"
-                                            }
-                                        }
-                                    } else {
-                                        // 在 IO 线程执行耗时的反向地理编码
-                                        val address = withContext(Dispatchers.IO) {
-                                            @Suppress("DEPRECATION")
-                                            val addresses = geocoder.getFromLocation(loc.latitude, loc.longitude, 1)
-                                            if (!addresses.isNullOrEmpty()) {
-                                                addresses[0].getAddressLine(0) ?: "${loc.latitude}, ${loc.longitude}"
-                                            } else {
-                                                "${loc.latitude}, ${loc.longitude}"
-                                            }
-                                        }
-                                        location = address
-                                    }
-                                } catch (e: Exception) {
-                                    location = "${loc.latitude}, ${loc.longitude}"
-                                }
+                fun resolveAndSetAddress(loc: android.location.Location) {
+                    scope.launch {
+                        try {
+                            if (!android.location.Geocoder.isPresent()) {
+                                location = "${loc.latitude}, ${loc.longitude}"
+                                return@launch
                             }
-                        } else {
-                            Toast.makeText(context, "无法获取当前位置", Toast.LENGTH_SHORT).show()
+                            val geocoder = android.location.Geocoder(context, Locale.getDefault())
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                geocoder.getFromLocation(loc.latitude, loc.longitude, 1) { addresses ->
+                                    scope.launch(Dispatchers.Main) {
+                                        if (addresses.isNotEmpty()) {
+                                            location = addresses[0].getAddressLine(0) ?: "${loc.latitude}, ${loc.longitude}"
+                                        } else {
+                                            location = "${loc.latitude}, ${loc.longitude}"
+                                        }
+                                    }
+                                }
+                            } else {
+                                val address = withContext(Dispatchers.IO) {
+                                    @Suppress("DEPRECATION")
+                                    val addresses = geocoder.getFromLocation(loc.latitude, loc.longitude, 1)
+                                    if (!addresses.isNullOrEmpty()) {
+                                        addresses[0].getAddressLine(0) ?: "${loc.latitude}, ${loc.longitude}"
+                                    } else {
+                                        "${loc.latitude}, ${loc.longitude}"
+                                    }
+                                }
+                                location = address
+                            }
+                        } catch (e: Exception) {
+                            Log.e("EditorScreen", "Geocoder failed", e)
+                            location = "${loc.latitude}, ${loc.longitude}"
                         }
                     }
+                }
+
+                fun fetchWithLastLocation() {
+                    fusedLocationClient.lastLocation
+                        .addOnSuccessListener { last ->
+                            if (last != null) {
+                                resolveAndSetAddress(last)
+                            } else {
+                                Toast.makeText(context, context.getString(R.string.location_fetch_failed_service_disabled), Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e("EditorScreen", "LastLocation request failed", e)
+                            Toast.makeText(context, context.getString(R.string.location_fetch_failed_generic, e.message ?: "Unknown error"), Toast.LENGTH_SHORT).show()
+                        }
+                }
+
+                fun fetchWithBalanced() {
+                    fusedLocationClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null)
+                        .addOnSuccessListener { loc ->
+                            if (loc != null) {
+                                resolveAndSetAddress(loc)
+                            } else {
+                                fetchWithLastLocation()
+                            }
+                        }
+                        .addOnFailureListener {
+                            fetchWithLastLocation()
+                        }
+                }
+
+                fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+                    .addOnSuccessListener { loc ->
+                        if (loc != null) {
+                            resolveAndSetAddress(loc)
+                        } else {
+                            fetchWithBalanced()
+                        }
+                    }
+                    .addOnFailureListener {
+                        fetchWithBalanced()
+                    }
             } catch (e: SecurityException) {
-                Toast.makeText(context, "权限不足", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.location_permission_disabled), Toast.LENGTH_SHORT).show()
             }
         } else {
-            locationPermissionState.launchPermissionRequest()
+            if (locationPermissionsState.shouldShowRationale) {
+                Toast.makeText(context, context.getString(R.string.location_permission_rationale), Toast.LENGTH_SHORT).show()
+            }
+            locationPermissionsState.launchMultiplePermissionRequest()
         }
     }
 
@@ -489,10 +768,8 @@ fun EditorScreen(
                 content = it.content
                 selectedDate = it.date
                 val loadedAudioUris = it.audioUris.split(",").filter { s -> s.isNotEmpty() }.map { s -> Uri.parse(s) }
-                // 这里不能用 filter { s -> s.isNotEmpty() }，否则会破坏索引对应关系
                 val loadedTranscriptions = it.audioTranscriptions.split("|")
                 audioUris = loadedAudioUris
-                // 如果长度不匹配，只取匹配的部分
                 audioTranscriptions = loadedAudioUris.zip(loadedTranscriptions).toMap()
                 imageUris = it.imageUris.split(",").filter { s -> s.isNotEmpty() }.map { s -> Uri.parse(s) }
                 attachmentUris = it.attachmentUris.split(",").filter { s -> s.isNotEmpty() }.map { s -> Uri.parse(s) }
@@ -505,7 +782,7 @@ fun EditorScreen(
     fun startRecording() {
         try {
             val audioDir = File(context.filesDir, "audio").apply { if (!exists()) mkdirs() }
-            val file = File(audioDir, "recording_${System.currentTimeMillis()}.pcm")
+            val file = File(audioDir, "recording_${System.currentTimeMillis()}.wav")
             currentAudioFile = file
             
             val sampleRate = 16000
@@ -514,7 +791,7 @@ fun EditorScreen(
             val bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
             
             val recorder = AudioRecord(
-                android.media.MediaRecorder.AudioSource.MIC,
+                MediaRecorder.AudioSource.MIC,
                 sampleRate,
                 channelConfig,
                 audioFormat,
@@ -523,22 +800,26 @@ fun EditorScreen(
             
             audioRecord = recorder
             isRecording = true
-            currentTranscription = "正在识别中..."
 
             scope.launch(Dispatchers.IO) {
                 recorder.startRecording()
-                FileOutputStream(file).use { output ->
-                    // --- WAV 录制辅助函数 (已迁移至 WhisperUtil) ---
-                    // 1. 预留 44 字节的 WAV 头空间
-                    WhisperUtil.writeWavHeader(output, 0)
-
+                val fos = FileOutputStream(file)
+                fos.use { output ->
+                    // 写入 44 字节的 WAV 头部占位符
+                    output.write(ByteArray(44))
+                    
                     val buffer = ByteArray(bufferSize)
+                    var totalAudioLen = 0L
                     while (isRecording) {
                         val read = recorder.read(buffer, 0, buffer.size)
                         if (read > 0) {
                             output.write(buffer, 0, read)
+                            totalAudioLen += read
                         }
                     }
+                    
+                    // 录音结束后更新 WAV 头部
+                    updateWavHeader(file, totalAudioLen)
                 }
                 recorder.stop()
                 recorder.release()
@@ -554,30 +835,31 @@ fun EditorScreen(
             audioRecord = null
             
             currentAudioFile?.let { file ->
-                scope.launch(Dispatchers.Default) {
-                    // 1. 更新 WAV 头
-                    val totalAudioLen = file.length() - 44
-                    if (totalAudioLen > 0) {
-                        val raf = java.io.RandomAccessFile(file, "rw")
-                        val bos = FileOutputStream(raf.fd)
-                        WhisperUtil.writeWavHeader(bos, totalAudioLen)
-                        bos.close()
-                        raf.close()
+                scope.launch(Dispatchers.IO) {
+                    // 读取 PCM 数据进行语音识别 (跳过 44 字节头部)
+                    val pcmData = FileInputStream(file).use { fis ->
+                        fis.skip(44)
+                        fis.readBytes()
                     }
-
-                    // 2. 解码并转录
-                    val audioData = WhisperUtil.decodeAudioFile(file)
+                    var transcription = if (isVoskReady) "正在处理语音..." else "语音记录 (Vosk 未就绪)"
                     
-                    // 调用 WhisperLib 转文字
-                    val result = if (whisperLib != null) {
-                        WhisperLib.transcribe(whisperLib!!, audioData)
-                    } else {
-                        null
+                    if (isVoskReady) {
+                        voskRecognizer?.let { recognizer ->
+                            recognizer.reset()
+                            recognizer.acceptWaveForm(pcmData, pcmData.size)
+                            val jsonResult = recognizer.finalResult
+                            try {
+                                val json = JSONObject(jsonResult)
+                                val text = json.optString("text", "")
+                                transcription = if (text.isNotEmpty()) text else "语音记录 (无文字内容)"
+                            } catch (e: Exception) {
+                                Log.e("EditorScreen", "Vosk result parse failed", e)
+                                transcription = "语音记录 (解析失败)"
+                            }
+                        }
                     }
-                    val transcription = result?.text ?: "识别失败 (Whisper 未就绪)"
                     
                     withContext(Dispatchers.Main) {
-                        currentTranscription = transcription
                         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
                         audioUris = audioUris + uri
                         audioTranscriptions = audioTranscriptions + (uri to transcription)
@@ -652,6 +934,8 @@ fun EditorScreen(
                                     attachmentUris = attachmentUris.joinToString(","),
                                     audioUris = audioUris.joinToString(","),
                                     audioTranscriptions = audioUris.map { audioTranscriptions[it] ?: "" }.joinToString("|"),
+                                    audioNames = audioUris.map { audioNames[it] ?: "" }.joinToString("|"),
+                                    audioTranscriptionsVisibility = audioUris.map { if (audioTranscriptionsVisibility[it] != false) "1" else "0" }.joinToString("|"),
                                     mood = mood,
                                     location = location
                                 )
@@ -815,36 +1099,49 @@ fun EditorScreen(
                         Text("录音", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         audioUris.forEach { uri ->
                             Column(modifier = Modifier.fillMaxWidth()) {
+                                val audioName = audioNames[uri] ?: "语音记录 ${uri.lastPathSegment?.takeLast(10) ?: ""}"
                                 Card(
-                                    onClick = {
-                                        try {
-                                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                                                setDataAndType(uri, context.contentResolver.getType(uri) ?: "audio/*")
-                                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
+                                        .combinedClickable(
+                                            onClick = {
+                                                try {
+                                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                                        val mimeType = context.contentResolver.getType(uri) ?: "audio/wav"
+                                                        setDataAndType(uri, mimeType)
+                                                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                    }
+                                                    context.startActivity(intent)
+                                                } catch (e: Exception) {
+                                                    Toast.makeText(context, "无法播放音频: ${e.message}", Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                            onLongClick = {
+                                                editingAudioUri = uri
+                                                showAudioPropertiesDialog = true
                                             }
-                                            context.startActivity(intent)
-                                        } catch (e: Exception) {
-                                            Toast.makeText(context, "无法播放音频: ${e.message}", Toast.LENGTH_SHORT).show()
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                        ),
                                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.2f))
                                 ) {
                                     Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Icon(Icons.Default.Audiotrack, contentDescription = null)
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text("语音记录 ${uri.lastPathSegment?.takeLast(10) ?: ""}", modifier = Modifier.weight(1f))
+                                        Text(audioName, modifier = Modifier.weight(1f))
                                         IconButton(onClick = { 
                                             audioUris = audioUris - uri
                                             audioTranscriptions = audioTranscriptions - uri
+                                            audioNames = audioNames - uri
+                                            audioTranscriptionsVisibility = audioTranscriptionsVisibility - uri
                                         }) {
                                             Icon(Icons.Default.Delete, contentDescription = "Delete")
                                         }
                                     }
                                 }
-                                // 显示转换后的文字
+                                // 显示转换后的文字 (如果可见)
                                 val transcription = audioTranscriptions[uri] ?: ""
-                                if (transcription.isNotEmpty()) {
+                                val isVisible = audioTranscriptionsVisibility[uri] != false
+                                if (transcription.isNotEmpty() && isVisible) {
                                     Text(
                                         text = transcription,
                                         style = MaterialTheme.typography.bodySmall,
@@ -924,7 +1221,15 @@ fun EditorScreen(
                     },
                     onVoiceInput = {
                         if (audioPermissionState.status.isGranted) {
-                            if (isRecording) stopRecording() else startRecording()
+                            if (isRecording) {
+                                stopRecording()
+                            } else {
+                                if (isVoskReady) {
+                                    startRecording()
+                                } else {
+                                    Toast.makeText(context, "语音识别模型正在初始化，请稍后...", Toast.LENGTH_SHORT).show()
+                                }
+                            }
                         } else {
                             audioPermissionState.launchPermissionRequest()
                         }
@@ -961,6 +1266,27 @@ fun EditorScreen(
                         showLocationDialog = false
                     },
                     onDismiss = { showLocationDialog = false }
+                )
+            }
+
+            if (showAudioPropertiesDialog && editingAudioUri != null) {
+                val uri = editingAudioUri!!
+                val defaultAudioName = audioNames[uri] ?: "语音记录 ${uri.lastPathSegment?.takeLast(10) ?: ""}"
+                AudioPropertiesDialog(
+                    initialName = defaultAudioName,
+                    initialVisibility = audioTranscriptionsVisibility[uri] ?: true,
+                    initialTranscription = audioTranscriptions[uri] ?: "",
+                    onConfirm = { name, visibility, transcription ->
+                        audioNames = audioNames + (uri to name)
+                        audioTranscriptionsVisibility = audioTranscriptionsVisibility + (uri to visibility)
+                        audioTranscriptions = audioTranscriptions + (uri to transcription)
+                        showAudioPropertiesDialog = false
+                        editingAudioUri = null
+                    },
+                    onDismiss = {
+                        showAudioPropertiesDialog = false
+                        editingAudioUri = null
+                    }
                 )
             }
         }
