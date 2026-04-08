@@ -1,3 +1,13 @@
 <resources>
     <string name="app_name">My Application</string>
+    <string name="location_dialog_title">Enter Location</string>
+    <string name="location_dialog_placeholder">Where are you?</string>
+    <string name="location_dialog_ok">OK</string>
+    <string name="location_dialog_cancel">Cancel</string>
+    <string name="location_fetch_failed_service_disabled">无法获取当前位置，请检查定位服务是否开启</string>
+    <string name="location_fetch_failed_generic">定位获取失败: %s</string>
+    <string name="location_permission_disabled">定位权限已被禁用</string>
+    <string name="location_permission_rationale">应用需要定位权限以自动填写地址</string>
+    <string name="location_content_description">定位</string>
+    <string name="tip_long_press_location">长按定位按钮可自定义位置</string>
 </resources>

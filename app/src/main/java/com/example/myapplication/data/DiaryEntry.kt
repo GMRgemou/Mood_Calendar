@@ -15,6 +15,8 @@ data class DiaryEntry(
     val attachmentUris: String = "", // 逗号分隔的附件 URI 字符串
     val audioUris: String = "", // 逗号分隔的录音 URI 字符串
     val audioTranscriptions: String = "", // 逗号分隔的录音转文字字符串
+    val audioNames: String = "", // 逗号分隔的录音自定义名称字符串
+    val audioTranscriptionsVisibility: String = "", // 逗号分隔的录音转文字可见性 (0: 隐藏, 1: 显示)
     val mood: String = "", // E.g., "😊", "😢", etc.
     val location: String = "" // E.g., "New York", "San Francisco"
 )

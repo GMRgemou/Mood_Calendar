@@ -20,10 +20,6 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        
-        ndk {
-            abiFilters.add("arm64-v8a")
-        }
     }
 
     buildTypes {
@@ -44,28 +40,25 @@ android {
     }
 
     androidResources {
-        noCompress += "tflite"
-    }
-
-    sourceSets {
-        getByName("main") {
-            jniLibs.srcDirs("src/main/jniLibs")
-        }
+        noCompress += "mdl"
+        noCompress += "fst"
+        noCompress += "conf"
+        noCompress += "int"
+        noCompress += "stats"
+        noCompress += "dubm"
+        noCompress += "ie"
+        noCompress += "mat"
     }
 
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
-        jniLibs {
-            useLegacyPackaging = true
-        }
     }
 }
 
 dependencies {
-    implementation(libs.tensorflow.lite)
-    implementation(libs.tensorflow.lite.gpu)
+    implementation(libs.vosk.android)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
