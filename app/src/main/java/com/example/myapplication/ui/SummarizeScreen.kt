@@ -16,7 +16,39 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+
 import com.example.myapplication.data.DiaryEntry
+
+private val ScreenTitleFontSize = 30.sp
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun UnifiedTopBar(
+    title: String,
+    modifier: Modifier = Modifier,
+    navigationIcon: (@Composable () -> Unit)? = null,
+    actions: @Composable RowScope.() -> Unit = {}
+) {
+    TopAppBar(
+        modifier = modifier,
+        title = {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.headlineMedium,
+                fontSize = ScreenTitleFontSize,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        navigationIcon = {
+            navigationIcon?.invoke()
+        },
+        actions = actions,
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = androidx.compose.ui.graphics.Color.Transparent,
+            titleContentColor = MaterialTheme.colorScheme.onBackground
+        )
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -29,16 +61,7 @@ fun SummarizeScreen(
     Scaffold(
         modifier = modifier,
         topBar = {
-            TopAppBar(
-                title = { 
-                    Text(
-                        "日记总结",
-                        style = MaterialTheme.typography.headlineLarge,
-                        fontSize = 30.sp,
-                        fontWeight = FontWeight.Bold
-                    ) 
-                }
-            )
+            UnifiedTopBar(title = "日记总结")
         }
     ) { padding ->
         LazyColumn(

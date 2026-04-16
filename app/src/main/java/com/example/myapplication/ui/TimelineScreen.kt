@@ -1,6 +1,7 @@
 package com.example.myapplication.ui
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.animation.core.spring
@@ -26,6 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplication.data.DiaryEntry
 import kotlinx.coroutines.launch
@@ -36,9 +38,12 @@ import android.net.Uri
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 
+private val ScreenTitleFontSize = 30.sp
+
 // 定义滑动状态
 enum class SwipeState { Settled, Open }
 
+// 时间线主页面：展示日记列表、背景图层与新增入口
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun TimelineScreen(
@@ -51,6 +56,7 @@ fun TimelineScreen(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
+    // 订阅 ViewModel 中的日记流，驱动列表实时刷新
     val entries by viewModel.entries.collectAsState()
     // 追踪当前打开了菜单的日记 ID
     var openEntryId by remember { mutableStateOf<Long?>(null) }
@@ -75,25 +81,12 @@ fun TimelineScreen(
 
         Scaffold(
             containerColor = androidx.compose.ui.graphics.Color.Transparent,
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding(),
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
             topBar = {
-                Column {
-                    Spacer(modifier = Modifier.height(48.dp))
-                    TopAppBar(
-                        title = { 
-                            Text(
-                                text = "我的日记",
-                                style = MaterialTheme.typography.headlineLarge,
-                                fontSize = 34.sp,
-                                fontWeight = FontWeight.Bold
-                            ) 
-                        },
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = androidx.compose.ui.graphics.Color.Transparent,
-                            titleContentColor = MaterialTheme.colorScheme.onBackground
-                        ),
-                        windowInsets = WindowInsets(0, 0, 0, 0)
-                    )
-                }
+                UnifiedTopBar(title = "我的日记")
             },
             floatingActionButton = {
                 FloatingActionButton(
@@ -160,6 +153,7 @@ fun TimelineScreen(
     }
 }
 
+// 可侧滑的日记卡片：左滑显示置顶/删除操作
 @OptIn(ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun SwipeableDiaryItem(
@@ -174,7 +168,9 @@ fun SwipeableDiaryItem(
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier
 ) {
+    // 用于 dp 与 px 互转，保证手势阈值和位移计算准确
     val density = LocalDensity.current
+    // 控制删除退场动画是否触发
     var isDeleting by remember { mutableStateOf(false) }
     
     // 设置露出的按钮宽度
@@ -221,6 +217,7 @@ fun SwipeableDiaryItem(
         }
     }
 
+    // 删除时执行淡出+滑出动画，动画结束后再真正删除数据
     AnimatedVisibility(
         visible = !isDeleting,
         exit = slideOutHorizontally(targetOffsetX = { -it }, animationSpec = spring(stiffness = Spring.StiffnessLow)) + 
@@ -276,6 +273,7 @@ fun SwipeableDiaryItem(
                 }
             }
 
+            // 前景卡片层：承载可拖拽的日记内容
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -305,6 +303,7 @@ fun SwipeableDiaryItem(
     }
 }
 
+// 空状态视图：当没有日记时给出引导提示
 @Composable
 fun EmptyState(modifier: Modifier = Modifier) {
     Column(
