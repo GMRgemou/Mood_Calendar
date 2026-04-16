@@ -907,16 +907,10 @@ fun EditorScreen(
         Scaffold(
             containerColor = Color.Transparent,
             modifier = Modifier.fillMaxSize(),
-            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            contentWindowInsets = WindowInsets.statusBars,
             topBar = {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = if (entryId == -1L) "New Entry" else "Edit Entry",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                    },
+                UnifiedTopBar(
+                    title = if (entryId == -1L) "New Entry" else "Edit Entry",
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -942,21 +936,15 @@ fun EditorScreen(
                                 onNavigateBack()
                             }
                         ) { Icon(Icons.Default.Done, contentDescription = "Save") }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent,
-                        titleContentColor = MaterialTheme.colorScheme.onBackground
-                    ),
-                    windowInsets = WindowInsets.statusBars
+                    }
                 )
             }
         ) { padding ->
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = padding.calculateTopPadding())
+                    .padding(padding)
                     .imePadding()
-                    .navigationBarsPadding()
             ) {
             Column(
                 modifier = Modifier

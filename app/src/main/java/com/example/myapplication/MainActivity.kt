@@ -36,6 +36,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
         setContent {
             var backgroundUri by remember { mutableStateOf<Uri?>(null) }
             var backgroundOpacity by remember { mutableFloatStateOf(0.6f) }
@@ -92,12 +94,11 @@ fun MainScreen(
                                 label = { Text(screen.label) },
                                 selected = isSelected,
                                 onClick = {
-                                    navController.navigate(screen.route) {
-                                        popUpTo(navController.graph.findStartDestination().id) {
-                                            saveState = true
+                                    val currentRoute = navController.currentBackStackEntry?.destination?.route
+                                    if (currentRoute != screen.route) {
+                                        navController.navigate(screen.route) {
+                                            launchSingleTop = true
                                         }
-                                        launchSingleTop = true
-                                        restoreState = true
                                     }
                                 }
                             )
@@ -116,8 +117,30 @@ fun MainScreen(
             ) {
                 composable(
                     Screen.Timeline.route,
-                    enterTransition = { fadeIn(animationSpec = tween(300)) },
-                    exitTransition = { fadeOut(animationSpec = tween(300)) }
+                    enterTransition = {
+                        slideInHorizontally(
+                            initialOffsetX = { -it / 3 },
+                            animationSpec = tween(280)
+                        ) + fadeIn(animationSpec = tween(280))
+                    },
+                    exitTransition = {
+                        slideOutHorizontally(
+                            targetOffsetX = { it / 3 },
+                            animationSpec = tween(280)
+                        ) + fadeOut(animationSpec = tween(280))
+                    },
+                    popEnterTransition = {
+                        slideInHorizontally(
+                            initialOffsetX = { it / 3 },
+                            animationSpec = tween(280)
+                        ) + fadeIn(animationSpec = tween(280))
+                    },
+                    popExitTransition = {
+                        slideOutHorizontally(
+                            targetOffsetX = { -it / 3 },
+                            animationSpec = tween(280)
+                        ) + fadeOut(animationSpec = tween(280))
+                    }
                 ) {
                     TimelineScreen(
                         onEntryClick = { entryId -> navController.navigate("editor?entryId=$entryId") },
@@ -131,18 +154,128 @@ fun MainScreen(
                 }
                 composable(
                     Screen.Calendar.route,
-                    enterTransition = { fadeIn(animationSpec = tween(300)) },
-                    exitTransition = { fadeOut(animationSpec = tween(300)) }
-                ) { 
+                    enterTransition = {
+                        val from = initialState.destination.route
+                        when (from) {
+                            Screen.Timeline.route -> slideInHorizontally(
+                                initialOffsetX = { it / 3 },
+                                animationSpec = tween(280)
+                            ) + fadeIn(animationSpec = tween(280))
+                            Screen.Summarize.route,
+                            Screen.Settings.route -> slideInHorizontally(
+                                initialOffsetX = { -it / 3 },
+                                animationSpec = tween(280)
+                            ) + fadeIn(animationSpec = tween(280))
+                            else -> fadeIn(animationSpec = tween(280))
+                        }
+                    },
+                    exitTransition = {
+                        val to = targetState.destination.route
+                        when (to) {
+                            Screen.Timeline.route -> slideOutHorizontally(
+                                targetOffsetX = { it / 3 },
+                                animationSpec = tween(280)
+                            ) + fadeOut(animationSpec = tween(280))
+                            Screen.Summarize.route,
+                            Screen.Settings.route -> slideOutHorizontally(
+                                targetOffsetX = { -it / 3 },
+                                animationSpec = tween(280)
+                            ) + fadeOut(animationSpec = tween(280))
+                            else -> fadeOut(animationSpec = tween(280))
+                        }
+                    },
+                    popEnterTransition = {
+                        val from = initialState.destination.route
+                        when (from) {
+                            Screen.Timeline.route -> slideInHorizontally(
+                                initialOffsetX = { it / 3 },
+                                animationSpec = tween(280)
+                            ) + fadeIn(animationSpec = tween(280))
+                            Screen.Summarize.route,
+                            Screen.Settings.route -> slideInHorizontally(
+                                initialOffsetX = { -it / 3 },
+                                animationSpec = tween(280)
+                            ) + fadeIn(animationSpec = tween(280))
+                            else -> fadeIn(animationSpec = tween(280))
+                        }
+                    },
+                    popExitTransition = {
+                        val to = targetState.destination.route
+                        when (to) {
+                            Screen.Timeline.route -> slideOutHorizontally(
+                                targetOffsetX = { it / 3 },
+                                animationSpec = tween(280)
+                            ) + fadeOut(animationSpec = tween(280))
+                            Screen.Summarize.route,
+                            Screen.Settings.route -> slideOutHorizontally(
+                                targetOffsetX = { -it / 3 },
+                                animationSpec = tween(280)
+                            ) + fadeOut(animationSpec = tween(280))
+                            else -> fadeOut(animationSpec = tween(280))
+                        }
+                    }
+                ) {
                     CalendarScreen(
                         onEntryClick = { entryId -> navController.navigate("editor?entryId=$entryId") },
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
-                composable(Screen.Summarize.route) { 
-                    SummarizeScreen(Modifier.padding(innerPadding)) 
+                composable(
+                    Screen.Summarize.route,
+                    enterTransition = {
+                        slideInHorizontally(
+                            initialOffsetX = { it / 2 },
+                            animationSpec = tween(280)
+                        ) + fadeIn(animationSpec = tween(280))
+                    },
+                    exitTransition = {
+                        slideOutHorizontally(
+                            targetOffsetX = { -it / 2 },
+                            animationSpec = tween(280)
+                        ) + fadeOut(animationSpec = tween(280))
+                    },
+                    popEnterTransition = {
+                        slideInHorizontally(
+                            initialOffsetX = { -it / 2 },
+                            animationSpec = tween(280)
+                        ) + fadeIn(animationSpec = tween(280))
+                    },
+                    popExitTransition = {
+                        slideOutHorizontally(
+                            targetOffsetX = { it / 2 },
+                            animationSpec = tween(280)
+                        ) + fadeOut(animationSpec = tween(280))
+                    }
+                ) {
+                    SummarizeScreen(Modifier.padding(innerPadding))
                 }
-                composable(Screen.Settings.route) { 
+                composable(
+                    Screen.Settings.route,
+                    enterTransition = {
+                        slideInHorizontally(
+                            initialOffsetX = { it / 2 },
+                            animationSpec = tween(280)
+                        ) + fadeIn(animationSpec = tween(280))
+                    },
+                    exitTransition = {
+                        slideOutHorizontally(
+                            targetOffsetX = { -it / 2 },
+                            animationSpec = tween(280)
+                        ) + fadeOut(animationSpec = tween(280))
+                    },
+                    popEnterTransition = {
+                        slideInHorizontally(
+                            initialOffsetX = { -it / 2 },
+                            animationSpec = tween(280)
+                        ) + fadeIn(animationSpec = tween(280))
+                    },
+                    popExitTransition = {
+                        slideOutHorizontally(
+                            targetOffsetX = { it / 2 },
+                            animationSpec = tween(280)
+                        ) + fadeOut(animationSpec = tween(280))
+                    }
+                ) {
                     SettingsScreen(
                         onBackgroundSelected = onBackgroundChanged,
                         backgroundOpacity = backgroundOpacity,
@@ -169,10 +302,11 @@ fun MainScreen(
                 ) { backStackEntry ->
                     val entryId = backStackEntry.arguments?.getLong("entryId") ?: -1L
                     EditorScreen(
-                        entryId = entryId, 
+                        entryId = entryId,
                         onNavigateBack = { navController.popBackStack() },
                         backgroundUri = backgroundUri,
-                        backgroundOpacity = backgroundOpacity
+                        backgroundOpacity = backgroundOpacity,
+                        modifier = Modifier
                     )
                 }
             }
