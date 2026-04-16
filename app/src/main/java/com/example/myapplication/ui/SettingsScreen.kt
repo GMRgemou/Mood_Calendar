@@ -18,6 +18,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+private val ScreenTitleFontSize = 30.sp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,9 +38,7 @@ fun SettingsScreen(
     Scaffold(
         modifier = modifier,
         topBar = {
-            TopAppBar(
-                title = { Text("设置", fontWeight = FontWeight.Bold) }
-            )
+            UnifiedTopBar(title = "设置")
         }
     ) { padding ->
         LazyColumn(
