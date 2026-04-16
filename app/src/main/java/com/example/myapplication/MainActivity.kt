@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,6 +28,7 @@ import com.example.myapplication.ui.EditorScreen
 import com.example.myapplication.ui.TimelineScreen
 import com.example.myapplication.ui.CalendarScreen
 import com.example.myapplication.ui.SummarizeScreen
+import com.example.myapplication.ui.MeScreen
 import com.example.myapplication.ui.SettingsScreen
 import com.example.myapplication.ui.theme.MyApplicationTheme
 import android.net.Uri
@@ -57,6 +59,7 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
     object Timeline : Screen("timeline", "我的日记", Icons.Default.EditNote)
     object Calendar : Screen("calendar", "Calendar", Icons.Default.CalendarMonth)
     object Summarize : Screen("summarize", "总结", Icons.Default.AutoAwesome)
+    object Me : Screen("me", "我的", Icons.Default.Person)
     object Settings : Screen("settings", "Settings", Icons.Default.Settings)
 }
 
@@ -71,7 +74,7 @@ fun MainScreen(
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
-    val items = listOf(Screen.Timeline, Screen.Calendar, Screen.Summarize, Screen.Settings)
+    val items = listOf(Screen.Timeline, Screen.Calendar, Screen.Summarize, Screen.Me, Screen.Settings)
 
     val isMainScreen = items.any { it.route == currentDestination?.route }
 
@@ -162,6 +165,7 @@ fun MainScreen(
                                 animationSpec = tween(280)
                             ) + fadeIn(animationSpec = tween(280))
                             Screen.Summarize.route,
+                            Screen.Me.route,
                             Screen.Settings.route -> slideInHorizontally(
                                 initialOffsetX = { -it / 3 },
                                 animationSpec = tween(280)
@@ -177,6 +181,7 @@ fun MainScreen(
                                 animationSpec = tween(280)
                             ) + fadeOut(animationSpec = tween(280))
                             Screen.Summarize.route,
+                            Screen.Me.route,
                             Screen.Settings.route -> slideOutHorizontally(
                                 targetOffsetX = { -it / 3 },
                                 animationSpec = tween(280)
@@ -192,6 +197,7 @@ fun MainScreen(
                                 animationSpec = tween(280)
                             ) + fadeIn(animationSpec = tween(280))
                             Screen.Summarize.route,
+                            Screen.Me.route,
                             Screen.Settings.route -> slideInHorizontally(
                                 initialOffsetX = { -it / 3 },
                                 animationSpec = tween(280)
@@ -207,6 +213,7 @@ fun MainScreen(
                                 animationSpec = tween(280)
                             ) + fadeOut(animationSpec = tween(280))
                             Screen.Summarize.route,
+                            Screen.Me.route,
                             Screen.Settings.route -> slideOutHorizontally(
                                 targetOffsetX = { -it / 3 },
                                 animationSpec = tween(280)
@@ -250,30 +257,115 @@ fun MainScreen(
                     SummarizeScreen(Modifier.padding(innerPadding))
                 }
                 composable(
-                    Screen.Settings.route,
+                    Screen.Me.route,
                     enterTransition = {
-                        slideInHorizontally(
-                            initialOffsetX = { it / 2 },
-                            animationSpec = tween(280)
-                        ) + fadeIn(animationSpec = tween(280))
+                        val from = initialState.destination.route
+                        when (from) {
+                            Screen.Settings.route -> slideInHorizontally(
+                                initialOffsetX = { -it / 2 },
+                                animationSpec = tween(280)
+                            ) + fadeIn(animationSpec = tween(280))
+                            else -> slideInHorizontally(
+                                initialOffsetX = { it / 2 },
+                                animationSpec = tween(280)
+                            ) + fadeIn(animationSpec = tween(280))
+                        }
                     },
                     exitTransition = {
-                        slideOutHorizontally(
-                            targetOffsetX = { -it / 2 },
-                            animationSpec = tween(280)
-                        ) + fadeOut(animationSpec = tween(280))
+                        val to = targetState.destination.route
+                        when (to) {
+                            Screen.Settings.route -> slideOutHorizontally(
+                                targetOffsetX = { -it / 2 },
+                                animationSpec = tween(280)
+                            ) + fadeOut(animationSpec = tween(280))
+                            else -> slideOutHorizontally(
+                                targetOffsetX = { it / 2 },
+                                animationSpec = tween(280)
+                            ) + fadeOut(animationSpec = tween(280))
+                        }
                     },
                     popEnterTransition = {
-                        slideInHorizontally(
-                            initialOffsetX = { -it / 2 },
-                            animationSpec = tween(280)
-                        ) + fadeIn(animationSpec = tween(280))
+                        val from = initialState.destination.route
+                        when (from) {
+                            Screen.Settings.route -> slideInHorizontally(
+                                initialOffsetX = { -it / 2 },
+                                animationSpec = tween(280)
+                            ) + fadeIn(animationSpec = tween(280))
+                            else -> slideInHorizontally(
+                                initialOffsetX = { it / 2 },
+                                animationSpec = tween(280)
+                            ) + fadeIn(animationSpec = tween(280))
+                        }
                     },
                     popExitTransition = {
-                        slideOutHorizontally(
-                            targetOffsetX = { it / 2 },
-                            animationSpec = tween(280)
-                        ) + fadeOut(animationSpec = tween(280))
+                        val to = targetState.destination.route
+                        when (to) {
+                            Screen.Settings.route -> slideOutHorizontally(
+                                targetOffsetX = { -it / 2 },
+                                animationSpec = tween(280)
+                            ) + fadeOut(animationSpec = tween(280))
+                            else -> slideOutHorizontally(
+                                targetOffsetX = { it / 2 },
+                                animationSpec = tween(280)
+                            ) + fadeOut(animationSpec = tween(280))
+                        }
+                    }
+                ) {
+                    MeScreen(modifier = Modifier.padding(innerPadding))
+                }
+                composable(
+                    Screen.Settings.route,
+                    enterTransition = {
+                        val from = initialState.destination.route
+                        when (from) {
+                            Screen.Me.route -> slideInHorizontally(
+                                initialOffsetX = { it / 2 },
+                                animationSpec = tween(280)
+                            ) + fadeIn(animationSpec = tween(280))
+                            else -> slideInHorizontally(
+                                initialOffsetX = { -it / 2 },
+                                animationSpec = tween(280)
+                            ) + fadeIn(animationSpec = tween(280))
+                        }
+                    },
+                    exitTransition = {
+                        val to = targetState.destination.route
+                        when (to) {
+                            Screen.Me.route -> slideOutHorizontally(
+                                targetOffsetX = { it / 2 },
+                                animationSpec = tween(280)
+                            ) + fadeOut(animationSpec = tween(280))
+                            else -> slideOutHorizontally(
+                                targetOffsetX = { -it / 2 },
+                                animationSpec = tween(280)
+                            ) + fadeOut(animationSpec = tween(280))
+                        }
+                    },
+                    popEnterTransition = {
+                        val from = initialState.destination.route
+                        when (from) {
+                            Screen.Me.route -> slideInHorizontally(
+                                initialOffsetX = { it / 2 },
+                                animationSpec = tween(280)
+                            ) + fadeIn(animationSpec = tween(280))
+                            else -> slideInHorizontally(
+                                initialOffsetX = { -it / 2 },
+                                animationSpec = tween(280)
+                            ) + fadeIn(animationSpec = tween(280))
+                        }
+                    },
+                    popExitTransition = {
+                        val to = targetState.destination.route
+                        when (to) {
+                            Screen.Me.route -> slideOutHorizontally(
+                                targetOffsetX = { it / 2 },
+                                animationSpec = tween(280)
+                            ) + fadeOut(animationSpec = tween(280))
+                            else -> slideOutHorizontally(
+                                targetOffsetX = { -it / 2 },
+                                animationSpec = tween(280)
+                            ) + fadeOut(animationSpec = tween(280))
+                        }
                     }
                 ) {
                     SettingsScreen(
