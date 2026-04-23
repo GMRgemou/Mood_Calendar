@@ -36,6 +36,7 @@ moshiKotlinCodegen = "1.15.2"
 datastorePreferences = "1.1.7"
 material = "1.4.+"
 vosk = "0.3.75"
+nanohttpd = "2.3.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -81,6 +82,7 @@ moshi-kotlin-codegen = { group = "com.squareup.moshi", name = "moshi-kotlin-code
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastorePreferences" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 vosk-android = { group = "com.alphacephei", name = "vosk-android", version.ref = "vosk" }
+nanohttpd = { group = "org.nanohttpd", name = "nanohttpd", version.ref = "nanohttpd" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
