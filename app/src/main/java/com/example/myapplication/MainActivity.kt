@@ -28,7 +28,9 @@ import com.example.myapplication.ui.EditorScreen
 import com.example.myapplication.ui.TimelineScreen
 import com.example.myapplication.ui.CalendarScreen
 import com.example.myapplication.ui.SummarizeScreen
+import com.example.myapplication.ui.LanDiscoveryScreen
 import com.example.myapplication.ui.MeScreen
+import com.example.myapplication.ui.PeerTweetScreen
 import com.example.myapplication.ui.SettingsScreen
 import com.example.myapplication.ui.theme.MyApplicationTheme
 import android.net.Uri
@@ -311,7 +313,10 @@ fun MainScreen(
                         }
                     }
                 ) {
-                    MeScreen(modifier = Modifier.padding(innerPadding))
+                    MeScreen(
+                        onNavigateToLanDiscovery = { navController.navigate("lan_discovery") },
+                        modifier = Modifier.padding(innerPadding)
+                    )
                 }
                 composable(
                     Screen.Settings.route,
@@ -372,6 +377,60 @@ fun MainScreen(
                         onBackgroundSelected = onBackgroundChanged,
                         backgroundOpacity = backgroundOpacity,
                         onOpacityChanged = onOpacityChanged,
+                        modifier = Modifier.padding(innerPadding)
+                    )
+                }
+                composable(
+                    route = "lan_discovery",
+                    enterTransition = {
+                        slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400))
+                    },
+                    exitTransition = {
+                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400))
+                    },
+                    popEnterTransition = {
+                        slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400))
+                    },
+                    popExitTransition = {
+                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400))
+                    }
+                ) {
+                    LanDiscoveryScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToPeer = { ip, port, deviceId ->
+                            navController.navigate("peer_tweets?ip=$ip&port=$port&deviceId=$deviceId")
+                        },
+                        modifier = Modifier.padding(innerPadding)
+                    )
+                }
+                composable(
+                    route = "peer_tweets?ip={ip}&port={port}&deviceId={deviceId}",
+                    arguments = listOf(
+                        navArgument("ip") { type = NavType.StringType },
+                        navArgument("port") { type = NavType.IntType },
+                        navArgument("deviceId") { type = NavType.StringType }
+                    ),
+                    enterTransition = {
+                        slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400))
+                    },
+                    exitTransition = {
+                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400))
+                    },
+                    popEnterTransition = {
+                        slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400))
+                    },
+                    popExitTransition = {
+                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400))
+                    }
+                ) { backStackEntry ->
+                    val ip = backStackEntry.arguments?.getString("ip") ?: ""
+                    val port = backStackEntry.arguments?.getInt("port") ?: 8765
+                    val peerDeviceId = backStackEntry.arguments?.getString("deviceId") ?: ""
+                    PeerTweetScreen(
+                        ip = ip,
+                        port = port,
+                        deviceId = peerDeviceId,
+                        onNavigateBack = { navController.popBackStack() },
                         modifier = Modifier.padding(innerPadding)
                     )
                 }

@@ -5,9 +5,10 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [DiaryEntry::class], version = 9, exportSchema = false)
+@Database(entities = [DiaryEntry::class, Tweet::class], version = 10, exportSchema = false)
 abstract class DiaryDatabase : RoomDatabase() {
     abstract fun diaryDao(): DiaryDao
+    abstract fun tweetDao(): TweetDao
 
     companion object {
         @Volatile
