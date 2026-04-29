@@ -18,6 +18,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 import com.example.myapplication.data.DiaryEntry
+import com.example.myapplication.ui.cardEntranceAnimation
+import androidx.compose.animation.AnimatedVisibility
 
 private val ScreenTitleFontSize = 30.sp
 
@@ -72,12 +74,17 @@ fun SummarizeScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
-                SummaryCard(
-                    title = "总计日记",
-                    value = entries.size.toString(),
-                    icon = Icons.Default.StickyNote2,
-                    color = MaterialTheme.colorScheme.primaryContainer
-                )
+                AnimatedVisibility(
+                    visible = true,
+                    enter = cardEntranceAnimation(delayMs = 50)
+                ) {
+                    SummaryCard(
+                        title = "总计日记",
+                        value = entries.size.toString(),
+                        icon = Icons.Default.StickyNote2,
+                        color = MaterialTheme.colorScheme.primaryContainer
+                    )
+                }
             }
 
             if (entries.isNotEmpty()) {
@@ -88,12 +95,17 @@ fun SummarizeScreen(
                     ?.key ?: "暂无数据"
 
                 item {
-                    SummaryCard(
-                        title = "最常出现的心情",
-                        value = mostCommonMood,
-                        icon = Icons.Default.Mood,
-                        color = MaterialTheme.colorScheme.secondaryContainer
-                    )
+                    AnimatedVisibility(
+                        visible = true,
+                        enter = cardEntranceAnimation(delayMs = 150)
+                    ) {
+                        SummaryCard(
+                            title = "最常出现的心情",
+                            value = mostCommonMood,
+                            icon = Icons.Default.Mood,
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        )
+                    }
                 }
 
                 val currentMonth = java.util.Calendar.getInstance().apply {
@@ -104,12 +116,17 @@ fun SummarizeScreen(
                 val entriesThisMonth = entries.count { it.date >= currentMonth }
 
                 item {
-                    SummaryCard(
-                        title = "本月日记数",
-                        value = entriesThisMonth.toString(),
-                        icon = Icons.Default.BarChart,
-                        color = MaterialTheme.colorScheme.tertiaryContainer
-                    )
+                    AnimatedVisibility(
+                        visible = true,
+                        enter = cardEntranceAnimation(delayMs = 250)
+                    ) {
+                        SummaryCard(
+                            title = "本月日记数",
+                            value = entriesThisMonth.toString(),
+                            icon = Icons.Default.BarChart,
+                            color = MaterialTheme.colorScheme.tertiaryContainer
+                        )
+                    }
                 }
             } else {
                 item {

@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -47,58 +48,73 @@ fun SettingsScreen(
                 .padding(padding)
         ) {
             item {
-                SettingsItem(
-                    title = "自定义主页背景",
-                    subtitle = "选择一张图片作为主页背景",
-                    icon = Icons.Default.Image,
-                    onClick = {
-                        photoPickerLauncher.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
-                    }
-                )
-            }
-            item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
+                AnimatedVisibility(
+                    visible = true,
+                    enter = fadeInSlideUp(delayMs = 50)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Opacity,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Text(
-                            text = "背景遮罩透明度",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Slider(
-                        value = backgroundOpacity,
-                        onValueChange = onOpacityChanged,
-                        valueRange = 0f..1f,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                    Text(
-                        text = "当前透明度: ${(backgroundOpacity * 100).toInt()}%",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.align(Alignment.End)
+                    SettingsItem(
+                        title = "自定义主页背景",
+                        subtitle = "选择一张图片作为主页背景",
+                        icon = Icons.Default.Image,
+                        onClick = {
+                            photoPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        }
                     )
                 }
             }
             item {
-                SettingsItem(
-                    title = "重置背景",
-                    subtitle = "恢复默认背景",
-                    icon = Icons.Default.ChevronRight,
-                    onClick = { onBackgroundSelected(null) }
-                )
+                AnimatedVisibility(
+                    visible = true,
+                    enter = fadeInSlideUp(delayMs = 150)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Opacity,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(
+                                text = "背景遮罩透明度",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Slider(
+                            value = backgroundOpacity,
+                            onValueChange = onOpacityChanged,
+                            valueRange = 0f..1f,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                        Text(
+                            text = "当前透明度: ${(backgroundOpacity * 100).toInt()}%",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.align(Alignment.End)
+                        )
+                    }
+                }
+            }
+            item {
+                AnimatedVisibility(
+                    visible = true,
+                    enter = fadeInSlideUp(delayMs = 250)
+                ) {
+                    SettingsItem(
+                        title = "重置背景",
+                        subtitle = "恢复默认背景",
+                        icon = Icons.Default.ChevronRight,
+                        onClick = { onBackgroundSelected(null) }
+                    )
+                }
             }
         }
     }
