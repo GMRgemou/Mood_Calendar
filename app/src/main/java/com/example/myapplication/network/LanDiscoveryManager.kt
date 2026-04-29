@@ -4,8 +4,10 @@ import android.util.Log
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.*
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.sync.withPermit
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -71,7 +73,7 @@ class LanDiscoveryManager(
         val packetJson = adapter.toJson(BroadcastPacket(deviceId, serverPort))
         val data = packetJson.toByteArray(Charsets.UTF_8)
 
-        while (isActive) {
+        while (currentCoroutineContext().isActive) {
             try {
                 val broadcastAddr = InetAddress.getByName("255.255.255.255")
                 val packet = DatagramPacket(data, data.size, broadcastAddr, DISCOVERY_PORT)
@@ -87,7 +89,7 @@ class LanDiscoveryManager(
         val socket = udpSocket ?: return
         val buffer = ByteArray(1024)
 
-        while (isActive) {
+        while (currentCoroutineContext().isActive) {
             try {
                 val packet = DatagramPacket(buffer, buffer.size)
                 socket.receive(packet)
@@ -104,7 +106,7 @@ class LanDiscoveryManager(
                 )
                 _discoveredDevices.value = current
             } catch (e: Exception) {
-                if (isActive) Log.e(TAG, "Listen receive failed", e)
+                if (currentCoroutineContext().isActive) Log.e(TAG, "Listen receive failed", e)
             }
         }
     }
