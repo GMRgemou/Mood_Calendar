@@ -1,5 +1,6 @@
 package com.example.myapplication.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -91,7 +92,12 @@ fun PeerTweetScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         items(tweets, key = { it.id }) { tweet ->
-                            TweetCard(tweet = tweet)
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = fadeInSlideUp(delayMs = 80)
+                            ) {
+                                TweetCard(tweet = tweet)
+                            }
                         }
                     }
                 }

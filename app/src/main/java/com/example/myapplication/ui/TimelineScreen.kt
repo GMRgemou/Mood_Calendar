@@ -1,10 +1,10 @@
 package com.example.myapplication.ui
 
-import androidx.compose.animation.*
-import androidx.compose.foundation.layout.RowScope
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -19,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -37,6 +38,8 @@ import kotlin.math.roundToInt
 import android.net.Uri
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
+import com.example.myapplication.ui.staggeredItemAnimation
+import androidx.compose.animation.AnimatedVisibility
 
 private val ScreenTitleFontSize = 30.sp
 
@@ -44,7 +47,7 @@ private val ScreenTitleFontSize = 30.sp
 enum class SwipeState { Settled, Open }
 
 // 时间线主页面：展示日记列表、背景图层与新增入口
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TimelineScreen(
     onEntryClick: (Long) -> Unit,
@@ -52,9 +55,7 @@ fun TimelineScreen(
     backgroundUri: Uri? = null,
     backgroundOpacity: Float = 0.6f,
     modifier: Modifier = Modifier,
-    viewModel: DiaryViewModel = viewModel(),
-    sharedTransitionScope: SharedTransitionScope? = null,
-    animatedVisibilityScope: AnimatedVisibilityScope? = null
+    viewModel: DiaryViewModel = viewModel()
 ) {
     // 订阅 ViewModel 中的日记流，驱动列表实时刷新
     val entries by viewModel.entries.collectAsState()
@@ -89,10 +90,34 @@ fun TimelineScreen(
                 UnifiedTopBar(title = "我的日记")
             },
             floatingActionButton = {
+                val fabScale = remember { Animatable(1f) }
+                val scope = rememberCoroutineScope()
                 FloatingActionButton(
-                    onClick = onAddEntryClick,
+                    onClick = {
+                        scope.launch {
+                            // Scale down with a quick spring
+                            fabScale.animateTo(
+                                targetValue = 0.75f,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness = Spring.StiffnessHigh
+                                )
+                            )
+                            // Navigate to editor
+                            onAddEntryClick()
+                            // Spring back to original size
+                            fabScale.animateTo(
+                                targetValue = 1f,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioLowBouncy,
+                                    stiffness = Spring.StiffnessMediumLow
+                                )
+                            )
+                        }
+                    },
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.scale(fabScale.value)
                 ) {
                     Icon(Icons.Default.Add, contentDescription = "Add Entry")
                 }
@@ -119,32 +144,34 @@ fun TimelineScreen(
                             items = entries,
                             key = { it.id }
                         ) { entry ->
-                            SwipeableDiaryItem(
-                                entry = entry,
-                                isOpen = openEntryId == entry.id,
-                                onOpened = { openEntryId = entry.id },
-                                onClosed = { if (openEntryId == entry.id) openEntryId = null },
-                                onClick = {
-                                    if (openEntryId != null) {
-                                        // 如果有菜单打开，点击卡片先关闭菜单
+                            val itemIndex = entries.indexOf(entry)
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = staggeredItemAnimation(delayMs = itemIndex * 50)
+                            ) {
+                                SwipeableDiaryItem(
+                                    entry = entry,
+                                    isOpen = openEntryId == entry.id,
+                                    onOpened = { openEntryId = entry.id },
+                                    onClosed = { if (openEntryId == entry.id) openEntryId = null },
+                                    onClick = {
+                                        if (openEntryId != null) {
+                                            onEntryClick(entry.id)
+                                        } else {
+                                            onEntryClick(entry.id)
+                                        }
+                                    },
+                                    onDelete = {
+                                        viewModel.deleteEntry(entry)
                                         openEntryId = null
-                                    } else {
-                                        // 否则执行正常的详情跳转
-                                        onEntryClick(entry.id)
-                                    }
-                                },
-                                onDelete = { 
-                                    viewModel.deleteEntry(entry)
-                                    openEntryId = null 
-                                },
-                                onPin = { 
-                                    viewModel.togglePin(entry)
-                                    openEntryId = null
-                                },
-                                sharedTransitionScope = sharedTransitionScope,
-                                animatedVisibilityScope = animatedVisibilityScope,
-                                modifier = Modifier.animateItem()
-                            )
+                                    },
+                                    onPin = {
+                                        viewModel.togglePin(entry)
+                                        openEntryId = null
+                                    },
+                                    modifier = Modifier
+                                )
+                            }
                         }
                     }
                 }
@@ -154,7 +181,7 @@ fun TimelineScreen(
 }
 
 // 可侧滑的日记卡片：左滑显示置顶/删除操作
-@OptIn(ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SwipeableDiaryItem(
     entry: DiaryEntry,
@@ -164,13 +191,11 @@ fun SwipeableDiaryItem(
     onClick: () -> Unit,
     onDelete: () -> Unit,
     onPin: () -> Unit,
-    sharedTransitionScope: SharedTransitionScope? = null,
-    animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier
 ) {
     // 用于 dp 与 px 互转，保证手势阈值和位移计算准确
     val density = LocalDensity.current
-    // 控制删除退场动画是否触发
+    // 控制删除状态
     var isDeleting by remember { mutableStateOf(false) }
     
     // 设置露出的按钮宽度
@@ -217,15 +242,10 @@ fun SwipeableDiaryItem(
         }
     }
 
-    // 删除时执行淡出+滑出动画，动画结束后再真正删除数据
-    AnimatedVisibility(
-        visible = !isDeleting,
-        exit = slideOutHorizontally(targetOffsetX = { -it }, animationSpec = spring(stiffness = Spring.StiffnessLow)) + 
-               fadeOut(animationSpec = spring(stiffness = Spring.StiffnessLow)),
-        modifier = modifier
-    ) {
+    // 删除时直接从列表中移除
+    if (!isDeleting) {
         Box(
-            modifier = Modifier
+            modifier = modifier
                 .fillMaxWidth()
                 .height(IntrinsicSize.Min)
                 .clip(MaterialTheme.shapes.medium)
@@ -285,9 +305,7 @@ fun SwipeableDiaryItem(
             ) {
                 DiaryEntryItem(
                     entry = entry, 
-                    onClick = onClick,
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope
+                    onClick = onClick
                 )
             }
         }
@@ -296,8 +314,7 @@ fun SwipeableDiaryItem(
     // 触发真正的删除操作
     if (isDeleting) {
         LaunchedEffect(Unit) {
-            // 给一点点时间让动画效果可见
-            kotlinx.coroutines.delay(400) 
+            // 立即执行删除，不使用延迟等待动画
             onDelete()
         }
     }

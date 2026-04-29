@@ -1,5 +1,6 @@
 package com.example.myapplication.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -55,37 +56,42 @@ fun LanDiscoveryScreen(
                 .padding(padding)
                 .padding(16.dp)
         ) {
-            OutlinedTextField(
-                value = searchText,
-                onValueChange = { searchText = it },
-                label = { Text("输入他人识别码") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                trailingIcon = {
-                    IconButton(
-                        onClick = {
-                            if (searchText.isBlank()) return@IconButton
-                            scope.launch {
-                                isSearching = true
-                                val found = viewModel.scanLanForDevice(normalizedSearch)
-                                isSearching = false
-                                if (found != null) {
-                                    onNavigateToPeer(
-                                        found.address.hostAddress ?: "",
-                                        found.port,
-                                        normalizedSearch
-                                    )
-                                } else {
-                                    snackbarHostState.showSnackbar("未找到该设备，请确认对方已开启应用并在同一局域网内")
+            AnimatedVisibility(
+                visible = true,
+                enter = fadeInSlideUp(delayMs = 50)
+            ) {
+                OutlinedTextField(
+                    value = searchText,
+                    onValueChange = { searchText = it },
+                    label = { Text("输入他人识别码") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    trailingIcon = {
+                        IconButton(
+                            onClick = {
+                                if (searchText.isBlank()) return@IconButton
+                                scope.launch {
+                                    isSearching = true
+                                    val found = viewModel.scanLanForDevice(normalizedSearch)
+                                    isSearching = false
+                                    if (found != null) {
+                                        onNavigateToPeer(
+                                            found.address.hostAddress ?: "",
+                                            found.port,
+                                            normalizedSearch
+                                        )
+                                    } else {
+                                        snackbarHostState.showSnackbar("未找到该设备，请确认对方已开启应用并在同一局域网内")
+                                    }
                                 }
-                            }
-                        },
-                        enabled = !isSearching
-                    ) {
-                        Icon(Icons.Default.Search, contentDescription = "搜索")
+                            },
+                            enabled = !isSearching
+                        ) {
+                            Icon(Icons.Default.Search, contentDescription = "搜索")
+                        }
                     }
-                }
-            )
+                )
+            }
 
             if (isSearching) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
@@ -93,11 +99,16 @@ fun LanDiscoveryScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Text(
-                text = "在线设备",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
+            AnimatedVisibility(
+                visible = true,
+                enter = fadeInSlideUp(delayMs = 100)
+            ) {
+                Text(
+                    text = "在线设备",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -117,13 +128,18 @@ fun LanDiscoveryScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(discovered.toList(), key = { it.first }) { (deviceId, device) ->
-                        DeviceCard(
-                            deviceId = deviceId,
-                            ip = device.address.hostAddress ?: "",
-                            onClick = {
-                                onNavigateToPeer(device.address.hostAddress ?: "", device.port, deviceId)
-                            }
-                        )
+                        AnimatedVisibility(
+                            visible = true,
+                            enter = fadeInSlideUp(delayMs = 150)
+                        ) {
+                            DeviceCard(
+                                deviceId = deviceId,
+                                ip = device.address.hostAddress ?: "",
+                                onClick = {
+                                    onNavigateToPeer(device.address.hostAddress ?: "", device.port, deviceId)
+                                }
+                            )
+                        }
                     }
                 }
             }
