@@ -1,16 +1,21 @@
 package com.example.myapplication.ui
 
+import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -29,6 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,22 +47,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.time.DayOfWeek
+import com.example.myapplication.data.DiaryEntry
 import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+// ── Constants ──────────────────────────────────────────────
+private const val CALENDAR_COLUMNS = 7
+private const val CALENDAR_CELLS = 42   // 6 weeks × 7 days
 
-private val PageBg = Color(0xFFF6F8FF)
-private val CardBg = Color(0xFFFFFFFF)
-private val Accent = Color(0xFF6C63FF)
-private val AccentSoft = Color(0xFFEAE8FF)
-private val TextMain = Color(0xFF1D2233)
-private val TextSub = Color(0xFF7B8294)
-private val Success = Color(0xFF2EBD85)
-private val TodayBg = Color(0xFFEEF1FF)
+// ── Main Screen ────────────────────────────────────────────
 
 @Composable
 fun CalendarScreen(
@@ -70,9 +72,18 @@ fun CalendarScreen(
     var selectedDate by remember { mutableStateOf(today) }
     val zoneId = remember { ZoneId.systemDefault() }
 
+    // Toggle visibility to re-trigger card entrance animations on each page visit
+    var cardsVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        cardsVisible = true
+    }
+
     Scaffold(
-        modifier = modifier,
-        containerColor = PageBg,
+        modifier = modifier
+            .fillMaxSize()
+            .statusBarsPadding(),
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
         topBar = {
             UnifiedTopBar(title = "日历")
         }
@@ -91,42 +102,62 @@ fun CalendarScreen(
             )
             Spacer(modifier = Modifier.height(12.dp))
 
-            val monthEntries = remember(entries, month, zoneId) {
-                entries.filter { entry ->
-                    val date = Instant.ofEpochMilli(entry.date).atZone(zoneId).toLocalDate()
-                    YearMonth.from(date) == month
+            // Pre-compute all derived data in a single memoized block
+            val (totalCount, streakDays, entryDates, monthEntries) = remember(entries, month, zoneId) {
+                val dates = entries.map { it.toLocalDate(zoneId) }
+                val dateSet = dates.toSet()
+                val filtered = entries.filterIndexed { index, _ ->
+                    YearMonth.from(dates[index]) == month
                 }
+                val count = entries.size
+                val streak = calculateStreakDays(entries, zoneId)
+                Result4(count, streak, dateSet, filtered)
             }
-            val totalCount = remember(entries) { entries.size }
-            val streakDays = remember(entries, zoneId) { calculateStreakDays(entries, zoneId) }
             val monthCount = remember(monthEntries) { monthEntries.size }
 
-            StatsCard(streakDays = streakDays, totalCount = totalCount, monthCount = monthCount)
-            Spacer(modifier = Modifier.height(14.dp))
-
-            val entryDates = remember(entries, zoneId) {
-                entries
-                    .map { Instant.ofEpochMilli(it.date).atZone(zoneId).toLocalDate() }
-                    .toSet()
+            AnimatedVisibility(
+                visible = cardsVisible,
+                enter = cardEntranceAnimation(delayMs = 100)
+            ) {
+                StatsCard(streakDays = streakDays, totalCount = totalCount, monthCount = monthCount)
             }
-
-            CalendarGridCard(
-                month = month,
-                selectedDate = selectedDate,
-                entryDates = entryDates,
-                onDateClick = { day -> selectedDate = day }
-            )
             Spacer(modifier = Modifier.height(14.dp))
 
-            val selectedEntry = remember(entries, selectedDate, zoneId) {
-                entries.firstOrNull {
-                    Instant.ofEpochMilli(it.date).atZone(zoneId).toLocalDate() == selectedDate
+            AnimatedVisibility(
+                visible = cardsVisible,
+                enter = cardEntranceAnimation(delayMs = 200)
+            ) {
+                CalendarGridCard(
+                    month = month,
+                    selectedDate = selectedDate,
+                    entryDates = entryDates,
+                    onDateClick = { day -> selectedDate = day }
+                )
+            }
+            Spacer(modifier = Modifier.height(14.dp))
+
+            val selectedEntries = remember(entries, selectedDate, zoneId) {
+                entries.filter {
+                    it.toLocalDate(zoneId) == selectedDate
+                }.sortedByDescending {
+                    it.date
                 }
             }
-            DailyEntryCard(date = selectedDate, entry = selectedEntry)
+            AnimatedVisibility(
+                visible = cardsVisible,
+                enter = cardEntranceAnimation(delayMs = 300)
+            ) {
+                DailyEntryCard(
+                    date = selectedDate,
+                    entries = selectedEntries,
+                    onEntryClick = onEntryClick
+                )
+            }
         }
     }
 }
+
+// ── Sub-composables ────────────────────────────────────────
 
 @Composable
 private fun CalendarHeader(
@@ -134,6 +165,8 @@ private fun CalendarHeader(
     onPrevMonth: () -> Unit,
     onNextMonth: () -> Unit
 ) {
+    val textSub = MaterialTheme.colorScheme.onSurfaceVariant
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -142,16 +175,16 @@ private fun CalendarHeader(
         Text(
             text = month.format(DateTimeFormatter.ofPattern("yyyy年MM月", Locale.CHINA)),
             style = MaterialTheme.typography.titleMedium,
-            color = TextSub,
+            color = textSub,
             fontWeight = FontWeight.SemiBold
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             IconButton(onClick = onPrevMonth) {
-                Icon(Icons.Default.ChevronLeft, contentDescription = "上一月", tint = TextSub)
+                Icon(Icons.Default.ChevronLeft, contentDescription = "上一月", tint = textSub)
             }
             IconButton(onClick = onNextMonth) {
-                Icon(Icons.Default.ChevronRight, contentDescription = "下一月", tint = TextSub)
+                Icon(Icons.Default.ChevronRight, contentDescription = "下一月", tint = textSub)
             }
         }
     }
@@ -159,10 +192,12 @@ private fun CalendarHeader(
 
 @Composable
 private fun StatsCard(streakDays: Int, totalCount: Int, monthCount: Int) {
+    val colors = MaterialTheme.colorScheme
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = CardBg),
+        colors = CardDefaults.cardColors(containerColor = colors.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp)) {
@@ -170,81 +205,66 @@ private fun StatsCard(streakDays: Int, totalCount: Int, monthCount: Int) {
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
-                        .background(AccentSoft)
+                        .background(colors.primaryContainer)
                         .padding(8.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.LocalFireDepartment,
                         contentDescription = null,
-                        tint = Accent,
+                        tint = colors.onPrimaryContainer,
                         modifier = Modifier.size(18.dp)
                     )
                 }
                 Spacer(modifier = Modifier.width(10.dp))
-                Text(text = "连续记录", color = TextSub, style = MaterialTheme.typography.titleMedium)
+                Text(text = "连续记录", color = colors.onSurfaceVariant, style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "$streakDays 天",
-                    color = TextMain,
+                    color = colors.onSurface,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.ExtraBold
                 )
             }
 
             Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFFF8F9FE))
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("总日记数", color = TextSub)
-                Text(
-                    text = totalCount.toString(),
-                    color = TextMain,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
+            StatRow(label = "总日记数", value = totalCount.toString())
             Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFFF8F9FE))
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("本月日记数", color = TextSub)
-                Text(
-                    text = monthCount.toString(),
-                    color = TextMain,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            StatRow(label = "本月日记数", value = monthCount.toString())
 
             Spacer(modifier = Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = Icons.Default.Star,
                     contentDescription = null,
-                    tint = Success,
+                    tint = colors.tertiary,
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = "保持当下的节奏，每一天都算数。",
-                    color = TextSub,
+                    color = colors.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun StatRow(label: String, value: String) {
+    val colors = MaterialTheme.colorScheme
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(colors.surfaceVariant.copy(alpha = 0.55f))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = colors.onSurfaceVariant)
+        Text(text = value, color = colors.onSurface, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -255,25 +275,27 @@ private fun CalendarGridCard(
     entryDates: Set<LocalDate>,
     onDateClick: (LocalDate) -> Unit
 ) {
-    val days = remember(month) { buildCalendarCells(month) }
+    val colors = MaterialTheme.colorScheme
+    val weeks = remember(month) {
+        buildCalendarCells(month).chunked(CALENDAR_COLUMNS)
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = CardBg),
+        colors = CardDefaults.cardColors(containerColor = colors.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             WeekHeader()
             Spacer(modifier = Modifier.height(8.dp))
 
-            for (weekIndex in 0 until 6) {
+            weeks.forEachIndexed { weekIndex, week ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    for (dayIndex in 0 until 7) {
-                        val date = days[weekIndex * 7 + dayIndex]
+                    week.forEach { date ->
                         DayCell(
                             date = date,
                             selectedDate = selectedDate,
@@ -282,7 +304,7 @@ private fun CalendarGridCard(
                         )
                     }
                 }
-                if (weekIndex != 5) Spacer(modifier = Modifier.height(6.dp))
+                if (weekIndex < weeks.lastIndex) Spacer(modifier = Modifier.height(6.dp))
             }
         }
     }
@@ -290,11 +312,12 @@ private fun CalendarGridCard(
 
 @Composable
 private fun WeekHeader() {
+    val textSub = MaterialTheme.colorScheme.onSurfaceVariant
     val names = listOf("一", "二", "三", "四", "五", "六", "日")
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         names.forEach {
             Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-                Text(text = it, color = TextSub, style = MaterialTheme.typography.labelMedium)
+                Text(text = it, color = textSub, style = MaterialTheme.typography.labelMedium)
             }
         }
     }
@@ -307,8 +330,14 @@ private fun DayCell(
     hasEntry: Boolean,
     onDateClick: (LocalDate) -> Unit
 ) {
+    val colors = MaterialTheme.colorScheme
     val isSelected = date == selectedDate
     val isToday = date == LocalDate.now()
+    val entryDotColor = when {
+        isSelected -> colors.onPrimary
+        hasEntry -> colors.primary
+        else -> Color.Transparent
+    }
 
     Box(
         modifier = Modifier
@@ -317,11 +346,15 @@ private fun DayCell(
             .background(
                 when {
                     date == null -> Color.Transparent
-                    isSelected -> Accent
-                    hasEntry -> AccentSoft
-                    isToday -> TodayBg
+                    isSelected -> colors.primary
+                    hasEntry -> colors.primaryContainer
+                    isToday -> colors.secondaryContainer
                     else -> Color.Transparent
                 }
+            )
+            .then(
+                if (date != null) Modifier.clickable { onDateClick(date) }
+                else Modifier
             )
             .padding(2.dp),
         contentAlignment = Alignment.Center
@@ -330,80 +363,91 @@ private fun DayCell(
             text = date?.dayOfMonth?.toString() ?: "",
             color = when {
                 date == null -> Color.Transparent
-                isSelected -> Color.White
-                hasEntry -> Accent
-                else -> TextMain
+                isSelected -> colors.onPrimary
+                hasEntry -> colors.onPrimaryContainer
+                isToday -> colors.onSecondaryContainer
+                else -> colors.onSurface
             },
-            fontWeight = if (isSelected || isToday || hasEntry) FontWeight.Bold else FontWeight.Medium,
-            modifier = Modifier
-                .clip(CircleShape)
-                .background(Color.Transparent)
-                .padding(2.dp)
+            fontWeight = if (isSelected || isToday || hasEntry) FontWeight.Bold else FontWeight.Medium
         )
 
-        if (date != null) {
+        // Keep the diary marker visible even when the day is today or currently selected.
+        // Previously, a diary on today's pre-selected cell was hidden by the selected-day
+        // background, making it look like today's entry was not shown on the calendar.
+        if (date != null && hasEntry) {
             Box(
                 modifier = Modifier
-                    .matchParentSize()
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 4.dp)
+                    .size(5.dp)
                     .clip(CircleShape)
-                    .background(Color.Transparent)
-            ) {
-                IconButton(
-                    onClick = { onDateClick(date) },
-                    modifier = Modifier.matchParentSize()
-                ) {
-                    Spacer(modifier = Modifier.size(0.dp))
-                }
-            }
+                    .background(entryDotColor)
+            )
         }
     }
 }
 
 @Composable
-private fun DailyEntryCard(date: LocalDate, entry: com.example.myapplication.data.DiaryEntry?) {
+private fun DailyEntryCard(
+    date: LocalDate,
+    entries: List<DiaryEntry>,
+    onEntryClick: (Long) -> Unit
+) {
+    val colors = MaterialTheme.colorScheme
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = CardBg),
+        colors = CardDefaults.cardColors(containerColor = colors.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp)) {
             Text(
                 text = "当日日记",
                 style = MaterialTheme.typography.titleMedium,
-                color = TextMain,
+                color = colors.onSurface,
                 fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.CHINA)),
                 style = MaterialTheme.typography.bodySmall,
-                color = TextSub
+                color = colors.onSurfaceVariant
             )
             Spacer(modifier = Modifier.height(10.dp))
-            Text(
-                text = entry?.content?.takeIf { it.isNotBlank() } ?: "当天暂无日记记录。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextMain,
-                lineHeight = 22.sp
-            )
+            if (entries.isEmpty()) {
+                Text(
+                    text = "当天暂无日记记录。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurface,
+                    lineHeight = 22.sp
+                )
+            } else {
+                Text(
+                    text = "共 ${entries.size} 篇日记，点击可查看或编辑。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                entries.forEachIndexed { index, entry ->
+                    DiaryEntryItem(
+                        entry = entry,
+                        onClick = { onEntryClick(entry.id) }
+                    )
+                    if (index < entries.lastIndex) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
+                }
+            }
         }
     }
 }
 
-private fun buildCalendarCells(month: YearMonth): List<LocalDate?> {
-    val firstDay = month.atDay(1)
-    val firstDayOffset = when (firstDay.dayOfWeek) {
-        DayOfWeek.MONDAY -> 0
-        DayOfWeek.TUESDAY -> 1
-        DayOfWeek.WEDNESDAY -> 2
-        DayOfWeek.THURSDAY -> 3
-        DayOfWeek.FRIDAY -> 4
-        DayOfWeek.SATURDAY -> 5
-        DayOfWeek.SUNDAY -> 6
-    }
+// ── Helpers ────────────────────────────────────────────────
 
-    val cells = MutableList<LocalDate?>(42) { null }
+private fun buildCalendarCells(month: YearMonth): List<LocalDate?> {
+    val firstDayOffset = month.atDay(1).dayOfWeek.ordinal
+    val cells = MutableList<LocalDate?>(CALENDAR_CELLS) { null }
     for (day in 1..month.lengthOfMonth()) {
         cells[firstDayOffset + day - 1] = month.atDay(day)
     }
@@ -411,13 +455,13 @@ private fun buildCalendarCells(month: YearMonth): List<LocalDate?> {
 }
 
 private fun calculateStreakDays(
-    entries: List<com.example.myapplication.data.DiaryEntry>,
+    entries: List<DiaryEntry>,
     zoneId: ZoneId
 ): Int {
     if (entries.isEmpty()) return 0
 
     val distinctDays = entries
-        .map { Instant.ofEpochMilli(it.date).atZone(zoneId).toLocalDate() }
+        .map { it.toLocalDate(zoneId) }
         .toSet()
 
     var cursor = LocalDate.now(zoneId)
@@ -428,3 +472,16 @@ private fun calculateStreakDays(
     }
     return streak
 }
+
+private fun DiaryEntry.toLocalDate(zoneId: ZoneId): LocalDate {
+    return Instant.ofEpochMilli(date).atZone(zoneId).toLocalDate()
+}
+
+// ── Multi-result holder to batch computations ──────────────
+
+private data class Result4<A, B, C, D>(
+    val first: A,
+    val second: B,
+    val third: C,
+    val fourth: D
+)

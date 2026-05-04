@@ -1,6 +1,7 @@
 package com.example.myapplication.ui
 
 import com.example.myapplication.R
+import androidx.activity.compose.BackHandler
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
@@ -17,9 +18,8 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.*
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -38,9 +38,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.PlainTooltip
@@ -61,16 +63,23 @@ import coil.compose.AsyncImage
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.*
+
+private fun defaultAudioName(uri: Uri): String {
+    return "语音记录 ${uri.lastPathSegment?.takeLast(10).orEmpty()}".trim()
+}
+
+private fun splitStoredAudioMetadata(value: String): List<String> {
+    return if (value.isEmpty()) emptyList() else value.split("|")
+}
 
 @Composable
 fun AudioPropertiesDialog(
@@ -367,8 +376,6 @@ fun EditorToolbar(
 fun EditorScreen(
     entryId: Long,
     onNavigateBack: () -> Unit,
-    backgroundUri: Uri? = null,
-    backgroundOpacity: Float = 0.6f,
     modifier: Modifier = Modifier,
     viewModel: DiaryViewModel = viewModel()
 ) {
@@ -390,6 +397,7 @@ fun EditorScreen(
     var isRecording by remember { mutableStateOf(false) }
     var audioRecord by remember { mutableStateOf<AudioRecord?>(null) }
     var currentAudioFile by remember { mutableStateOf<File?>(null) }
+    var recordingJob by remember { mutableStateOf<Job?>(null) }
 
     var voskModel by remember { mutableStateOf<Model?>(null) }
     var voskRecognizer by remember { mutableStateOf<Recognizer?>(null) }
@@ -412,28 +420,29 @@ fun EditorScreen(
     }
 
     fun updateWavHeader(file: File, totalAudioLen: Long) {
+        fun ascii(char: Char) = char.code.toByte()
         val totalDataLen = totalAudioLen + 36
         val sampleRate = 16000L
         val channels = 1
         val byteRate = 16 * sampleRate * channels / 8
         val header = ByteArray(44)
         
-        header[0] = 'R'.toByte() // RIFF/WAVE header
-        header[1] = 'I'.toByte()
-        header[2] = 'F'.toByte()
-        header[3] = 'F'.toByte()
+        header[0] = ascii('R') // RIFF/WAVE header
+        header[1] = ascii('I')
+        header[2] = ascii('F')
+        header[3] = ascii('F')
         header[4] = (totalDataLen and 0xffL).toByte()
         header[5] = ((totalDataLen shr 8) and 0xffL).toByte()
         header[6] = ((totalDataLen shr 16) and 0xffL).toByte()
         header[7] = ((totalDataLen shr 24) and 0xffL).toByte()
-        header[8] = 'W'.toByte()
-        header[9] = 'A'.toByte()
-        header[10] = 'V'.toByte()
-        header[11] = 'E'.toByte()
-        header[12] = 'f'.toByte() // 'fmt ' chunk
-        header[13] = 'm'.toByte()
-        header[14] = 't'.toByte()
-        header[15] = ' '.toByte()
+        header[8] = ascii('W')
+        header[9] = ascii('A')
+        header[10] = ascii('V')
+        header[11] = ascii('E')
+        header[12] = ascii('f') // 'fmt ' chunk
+        header[13] = ascii('m')
+        header[14] = ascii('t')
+        header[15] = ascii(' ')
         header[16] = 16 // 4 bytes: size of 'fmt ' chunk
         header[17] = 0
         header[18] = 0
@@ -454,10 +463,10 @@ fun EditorScreen(
         header[33] = 0
         header[34] = 16 // bits per sample
         header[35] = 0
-        header[36] = 'd'.toByte()
-        header[37] = 'a'.toByte()
-        header[38] = 't'.toByte()
-        header[39] = 'a'.toByte()
+        header[36] = ascii('d')
+        header[37] = ascii('a')
+        header[38] = ascii('t')
+        header[39] = ascii('a')
         header[40] = (totalAudioLen and 0xffL).toByte()
         header[41] = ((totalAudioLen shr 8) and 0xffL).toByte()
         header[42] = ((totalAudioLen shr 16) and 0xffL).toByte()
@@ -484,13 +493,19 @@ fun EditorScreen(
                 }
                 if (it.audioUris.isNotEmpty()) {
                     val uris = it.audioUris.split(",").filter { s -> s.isNotEmpty() }.map { s -> Uri.parse(s) }
-                    val transcriptions = it.audioTranscriptions.split("|")
-                    val names = it.audioNames.split("|")
-                    val visibilities = it.audioTranscriptionsVisibility.split("|")
+                    val transcriptions = splitStoredAudioMetadata(it.audioTranscriptions)
+                    val names = splitStoredAudioMetadata(it.audioNames)
+                    val visibilities = splitStoredAudioMetadata(it.audioTranscriptionsVisibility)
                     
                     audioUris = uris
                     audioTranscriptions = uris.zip(transcriptions).toMap()
-                    audioNames = if (names.size == uris.size) uris.zip(names).toMap() else emptyMap()
+                    audioNames = if (names.size == uris.size) {
+                        uris.zip(names)
+                            .mapNotNull { (uri, name) -> name.takeIf { savedName -> savedName.isNotBlank() }?.let { uri to it } }
+                            .toMap()
+                    } else {
+                        emptyMap()
+                    }
                     audioTranscriptionsVisibility = if (visibilities.size == uris.size) {
                         uris.zip(visibilities.map { v -> v == "1" }).toMap()
                     } else {
@@ -500,7 +515,7 @@ fun EditorScreen(
             }
         }
 
-        // 2. 初始化 Vosk
+        // 2. 初始化 Vosk（离线中文语音识别）
         withContext(Dispatchers.IO) {
             try {
                 // 尝试解压或加载已存在的模型
@@ -511,7 +526,7 @@ fun EditorScreen(
                             voskModel = model
                             try {
                                 voskRecognizer = Recognizer(model, 16000f)
-                                isVoskReady = true
+                                scope.launch(Dispatchers.Main) { isVoskReady = true }
                                 Log.d("EditorScreen", "Vosk model loaded successfully via unpack callback")
                             } catch (e: Exception) {
                                 Log.e("EditorScreen", "Vosk recognizer init failed with provided model", e)
@@ -524,7 +539,7 @@ fun EditorScreen(
                                             val nestedModel = Model(actualModelDir.absolutePath)
                                             voskModel = nestedModel
                                             voskRecognizer = Recognizer(nestedModel, 16000f)
-                                            isVoskReady = true
+                                            scope.launch(Dispatchers.Main) { isVoskReady = true }
                                             Log.d("EditorScreen", "Vosk model recovered from nested dir: ${actualModelDir.absolutePath}")
                                             return@launch
                                         } catch (ex: Exception) {
@@ -550,7 +565,7 @@ fun EditorScreen(
                                         val model = Model(actualModelDir.absolutePath)
                                         voskModel = model
                                         voskRecognizer = Recognizer(model, 16000f)
-                                        isVoskReady = true
+                                        scope.launch(Dispatchers.Main) { isVoskReady = true }
                                         Log.d("EditorScreen", "Vosk model recovered from existing storage: ${actualModelDir.absolutePath}")
                                         return@launch
                                     } catch (ex: Exception) {
@@ -583,6 +598,38 @@ fun EditorScreen(
     var showAudioPropertiesDialog by remember { mutableStateOf(false) }
     var editingAudioUri by remember { mutableStateOf<Uri?>(null) }
     var editableLocationText by remember { mutableStateOf("") }
+    var editorVisible by remember { mutableStateOf(false) }
+    var isNavigatingBack by remember { mutableStateOf(false) }
+    val slideDistancePx = with(LocalDensity.current) { 56.dp.toPx() }
+    val editorAnimationProgress by animateFloatAsState(
+        targetValue = if (editorVisible) 1f else 0f,
+        animationSpec = tween(
+            durationMillis = 260,
+            easing = FastOutSlowInEasing
+        ),
+        label = "editorOpenCloseProgress",
+        finishedListener = { progress ->
+            if (progress == 0f && isNavigatingBack) {
+                onNavigateBack()
+            }
+        }
+    )
+
+    LaunchedEffect(Unit) {
+        editorVisible = true
+    }
+
+    fun closeEditor() {
+        if (isNavigatingBack) return
+        isNavigatingBack = true
+        editorVisible = false
+    }
+
+    BackHandler(
+        enabled = !showDatePicker && selectedViewerUri == null && !showMoodDialog && !showLocationDialog && !showAudioPropertiesDialog
+    ) {
+        closeEditor()
+    }
 
     val datePickerState = rememberDatePickerState(initialSelectedDateMillis = selectedDate)
 
@@ -760,27 +807,9 @@ fun EditorScreen(
         onResult = { uris -> if (uris.isNotEmpty()) attachmentUris = attachmentUris + uris }
     )
 
-    LaunchedEffect(entryId) {
-        if (entryId != -1L) {
-            val entry = viewModel.getEntryById(entryId)
-            entry?.let {
-                title = it.title
-                content = it.content
-                selectedDate = it.date
-                val loadedAudioUris = it.audioUris.split(",").filter { s -> s.isNotEmpty() }.map { s -> Uri.parse(s) }
-                val loadedTranscriptions = it.audioTranscriptions.split("|")
-                audioUris = loadedAudioUris
-                audioTranscriptions = loadedAudioUris.zip(loadedTranscriptions).toMap()
-                imageUris = it.imageUris.split(",").filter { s -> s.isNotEmpty() }.map { s -> Uri.parse(s) }
-                attachmentUris = it.attachmentUris.split(",").filter { s -> s.isNotEmpty() }.map { s -> Uri.parse(s) }
-                mood = it.mood
-                location = it.location
-            }
-        }
-    }
-
     fun startRecording() {
         try {
+            if (isRecording) return
             val audioDir = File(context.filesDir, "audio").apply { if (!exists()) mkdirs() }
             val file = File(audioDir, "recording_${System.currentTimeMillis()}.wav")
             currentAudioFile = file
@@ -789,19 +818,28 @@ fun EditorScreen(
             val channelConfig = AudioFormat.CHANNEL_IN_MONO
             val audioFormat = AudioFormat.ENCODING_PCM_16BIT
             val bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
+            if (bufferSize == AudioRecord.ERROR || bufferSize == AudioRecord.ERROR_BAD_VALUE) {
+                Toast.makeText(context, "当前设备不支持录音参数", Toast.LENGTH_SHORT).show()
+                return
+            }
             
             val recorder = AudioRecord(
                 MediaRecorder.AudioSource.MIC,
                 sampleRate,
                 channelConfig,
                 audioFormat,
-                bufferSize
+                bufferSize * 2
             )
+            if (recorder.state != AudioRecord.STATE_INITIALIZED) {
+                recorder.release()
+                Toast.makeText(context, "录音初始化失败", Toast.LENGTH_SHORT).show()
+                return
+            }
             
             audioRecord = recorder
             isRecording = true
 
-            scope.launch(Dispatchers.IO) {
+            recordingJob = scope.launch(Dispatchers.IO) {
                 recorder.startRecording()
                 val fos = FileOutputStream(file)
                 fos.use { output ->
@@ -821,7 +859,7 @@ fun EditorScreen(
                     // 录音结束后更新 WAV 头部
                     updateWavHeader(file, totalAudioLen)
                 }
-                recorder.stop()
+                runCatching { recorder.stop() }
                 recorder.release()
             }
         } catch (e: Exception) {
@@ -836,6 +874,7 @@ fun EditorScreen(
             
             currentAudioFile?.let { file ->
                 scope.launch(Dispatchers.IO) {
+                    recordingJob?.join()
                     // 读取 PCM 数据进行语音识别 (跳过 44 字节头部)
                     val pcmData = FileInputStream(file).use { fis ->
                         fis.skip(44)
@@ -863,6 +902,9 @@ fun EditorScreen(
                         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
                         audioUris = audioUris + uri
                         audioTranscriptions = audioTranscriptions + (uri to transcription)
+                        audioNames = audioNames + (uri to defaultAudioName(uri))
+                        audioTranscriptionsVisibility = audioTranscriptionsVisibility + (uri to true)
+                        recordingJob = null
                     }
                 }
             }
@@ -886,65 +928,56 @@ fun EditorScreen(
         ) { DatePicker(state = datePickerState) }
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        // 自定义背景图片
-        if (backgroundUri != null) {
-            AsyncImage(
-                model = backgroundUri,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-        }
-        
-        // 半透明遮罩层 (无论是否有自定义背景都存在)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background.copy(alpha = backgroundOpacity))
-        )
-
+    Box(modifier = modifier) {
         Scaffold(
-            containerColor = Color.Transparent,
-            modifier = Modifier.fillMaxSize(),
-            contentWindowInsets = WindowInsets.statusBars,
-            topBar = {
-                UnifiedTopBar(
-                    title = if (entryId == -1L) "New Entry" else "Edit Entry",
-                    navigationIcon = {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                        }
-                    },
-                    actions = {
-                        IconButton(
-                            onClick = {
-                                viewModel.saveEntry(
-                                    id = entryId,
-                                    title = title,
-                                    content = content,
-                                    date = selectedDate,
-                                    imageUris = imageUris.joinToString(","),
-                                    attachmentUris = attachmentUris.joinToString(","),
-                                    audioUris = audioUris.joinToString(","),
-                                    audioTranscriptions = audioUris.map { audioTranscriptions[it] ?: "" }.joinToString("|"),
-                                    audioNames = audioUris.map { audioNames[it] ?: "" }.joinToString("|"),
-                                    audioTranscriptionsVisibility = audioUris.map { if (audioTranscriptionsVisibility[it] != false) "1" else "0" }.joinToString("|"),
-                                    mood = mood,
-                                    location = location
-                                )
-                                onNavigateBack()
+                containerColor = Color.Transparent,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding(),
+                contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
+                topBar = {
+                    UnifiedTopBar(
+                        title = if (entryId == -1L) "新建日记" else "编辑日记",
+                        navigationIcon = {
+                            IconButton(onClick = { closeEditor() }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                             }
-                        ) { Icon(Icons.Default.Done, contentDescription = "Save") }
-                    }
-                )
-            }
-        ) { padding ->
+                        },
+                        actions = {
+                            IconButton(
+                                onClick = {
+                                    viewModel.saveEntry(
+                                        id = entryId,
+                                        title = title,
+                                        content = content,
+                                        date = selectedDate,
+                                        imageUris = imageUris.joinToString(","),
+                                        attachmentUris = attachmentUris.joinToString(","),
+                                        audioUris = audioUris.joinToString(","),
+                                        audioTranscriptions = audioUris.map { audioTranscriptions[it] ?: "" }.joinToString("|"),
+                                        audioNames = audioUris.map { audioNames[it].takeUnless { name -> name.isNullOrBlank() } ?: defaultAudioName(it) }.joinToString("|"),
+                                        audioTranscriptionsVisibility = audioUris.map { if (audioTranscriptionsVisibility[it] != false) "1" else "0" }.joinToString("|"),
+                                        mood = mood,
+                                        location = location
+                                    )
+                                    closeEditor()
+                                }
+                            ) { Icon(Icons.Default.Done, contentDescription = "Save") }
+                        }
+                    )
+                }
+            ) { padding ->
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
                     .imePadding()
+                    .graphicsLayer {
+                        translationX = (1f - editorAnimationProgress) * slideDistancePx
+                        alpha = 0.72f + 0.28f * editorAnimationProgress
+                        scaleX = 0.985f + 0.015f * editorAnimationProgress
+                        scaleY = 0.985f + 0.015f * editorAnimationProgress
+                    }
             ) {
             Column(
                 modifier = Modifier
@@ -1087,7 +1120,7 @@ fun EditorScreen(
                         Text("录音", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         audioUris.forEach { uri ->
                             Column(modifier = Modifier.fillMaxWidth()) {
-                                val audioName = audioNames[uri] ?: "语音记录 ${uri.lastPathSegment?.takeLast(10) ?: ""}"
+                                val audioName = audioNames[uri].takeUnless { it.isNullOrBlank() } ?: defaultAudioName(uri)
                                 Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -1259,7 +1292,7 @@ fun EditorScreen(
 
             if (showAudioPropertiesDialog && editingAudioUri != null) {
                 val uri = editingAudioUri!!
-                val defaultAudioName = audioNames[uri] ?: "语音记录 ${uri.lastPathSegment?.takeLast(10) ?: ""}"
+                val defaultAudioName = audioNames[uri].takeUnless { it.isNullOrBlank() } ?: defaultAudioName(uri)
                 AudioPropertiesDialog(
                     initialName = defaultAudioName,
                     initialVisibility = audioTranscriptionsVisibility[uri] ?: true,
@@ -1277,6 +1310,6 @@ fun EditorScreen(
                     }
                 )
             }
-        }
+            }
     }
 }

@@ -4,8 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.*
-import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -18,12 +17,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import com.example.myapplication.ui.CustomBackgroundContainer
 import com.example.myapplication.ui.EditorScreen
 import com.example.myapplication.ui.TimelineScreen
 import com.example.myapplication.ui.CalendarScreen
@@ -34,8 +35,85 @@ import com.example.myapplication.ui.PeerTweetScreen
 import com.example.myapplication.ui.SettingsScreen
 import com.example.myapplication.ui.theme.MyApplicationTheme
 import android.net.Uri
+import androidx.compose.animation.*
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import com.example.myapplication.ui.androidActivityEnterTransition
+import com.example.myapplication.ui.androidActivityExitTransition
+import com.example.myapplication.ui.androidActivityPopEnterTransition
+import com.example.myapplication.ui.androidActivityPopExitTransition
+import com.example.myapplication.ui.smoothPageEnterTransition
+import com.example.myapplication.ui.smoothPageExitTransition
+import com.example.myapplication.ui.smoothPopEnterTransition
+import com.example.myapplication.ui.smoothPopExitTransition
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
-@OptIn(ExperimentalSharedTransitionApi::class)
+private const val APPEARANCE_PREFS = "appearance"
+private const val PREF_BACKGROUND_URI = "background_uri"
+private const val PREF_BACKGROUND_OPACITY = "background_opacity"
+private const val DEFAULT_BACKGROUND_OPACITY = 0.6f
+private const val PREF_AVATAR_URI = "avatar_uri"
+
+private fun deleteStoredBackground(context: android.content.Context) {
+    File(context.filesDir, "backgrounds").deleteRecursively()
+}
+
+private fun copyBackgroundToPrivateStorage(
+    context: android.content.Context,
+    sourceUri: Uri
+): Uri? {
+    return runCatching {
+        val backgroundDir = File(context.filesDir, "backgrounds").apply { mkdirs() }
+        val tempFile = File(backgroundDir, "custom_background.tmp")
+        val targetFile = File(backgroundDir, "custom_background")
+
+        context.contentResolver.openInputStream(sourceUri)?.use { input ->
+            tempFile.outputStream().use { output -> input.copyTo(output) }
+        } ?: return null
+
+        if (targetFile.exists()) targetFile.delete()
+        if (!tempFile.renameTo(targetFile)) {
+            tempFile.copyTo(targetFile, overwrite = true)
+            tempFile.delete()
+        }
+
+        Uri.fromFile(targetFile)
+    }.getOrNull()
+}
+
+private fun copyAvatarToPrivateStorage(
+    context: android.content.Context,
+    sourceUri: Uri
+): Uri? {
+    return runCatching {
+        val avatarDir = File(context.filesDir, "avatars").apply { mkdirs() }
+        val tempFile = File(avatarDir, "custom_avatar.tmp")
+        val targetFile = File(avatarDir, "custom_avatar")
+
+        context.contentResolver.openInputStream(sourceUri)?.use { input ->
+            tempFile.outputStream().use { output -> input.copyTo(output) }
+        } ?: return null
+
+        if (targetFile.exists()) targetFile.delete()
+        if (!tempFile.renameTo(targetFile)) {
+            tempFile.copyTo(targetFile, overwrite = true)
+            tempFile.delete()
+        }
+
+        Uri.fromFile(targetFile)
+    }.getOrNull()
+}
+
+private fun deleteStoredAvatar(context: android.content.Context) {
+    File(context.filesDir, "avatars").deleteRecursively()
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,14 +121,77 @@ class MainActivity : ComponentActivity() {
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         window.navigationBarColor = android.graphics.Color.TRANSPARENT
         setContent {
-            var backgroundUri by remember { mutableStateOf<Uri?>(null) }
-            var backgroundOpacity by remember { mutableFloatStateOf(0.6f) }
+            val context = LocalContext.current
+            val appearancePrefs = remember {
+                context.getSharedPreferences(APPEARANCE_PREFS, MODE_PRIVATE)
+            }
+            val scope = rememberCoroutineScope()
+            var backgroundUri by remember {
+                mutableStateOf(
+                    appearancePrefs.getString(PREF_BACKGROUND_URI, null)?.let(Uri::parse)
+                )
+            }
+            var backgroundOpacity by remember {
+                mutableFloatStateOf(
+                    appearancePrefs.getFloat(PREF_BACKGROUND_OPACITY, DEFAULT_BACKGROUND_OPACITY)
+                        .coerceIn(0f, 1f)
+                )
+            }
+            var avatarUri by remember {
+                mutableStateOf(
+                    appearancePrefs.getString(PREF_AVATAR_URI, null)?.let(Uri::parse)
+                )
+            }
             MyApplicationTheme {
                 MainScreen(
                     backgroundUri = backgroundUri,
                     backgroundOpacity = backgroundOpacity,
-                    onBackgroundChanged = { backgroundUri = it },
-                    onOpacityChanged = { backgroundOpacity = it }
+                    avatarUri = avatarUri,
+                    onBackgroundChanged = { selectedUri ->
+                        if (selectedUri == null) {
+                            deleteStoredBackground(context)
+                            backgroundUri = null
+                            appearancePrefs.edit().remove(PREF_BACKGROUND_URI).apply()
+                        } else {
+                            scope.launch {
+                                val storedUri = withContext(Dispatchers.IO) {
+                                    copyBackgroundToPrivateStorage(context, selectedUri)
+                                }
+                                if (storedUri != null) {
+                                    backgroundUri = storedUri
+                                    appearancePrefs.edit()
+                                        .putString(PREF_BACKGROUND_URI, storedUri.toString())
+                                        .apply()
+                                }
+                            }
+                        }
+                    },
+                    onOpacityChanged = { opacity ->
+                        val safeOpacity = opacity.coerceIn(0f, 1f)
+                        backgroundOpacity = safeOpacity
+                        appearancePrefs.edit()
+                            .putFloat(PREF_BACKGROUND_OPACITY, safeOpacity)
+                            .apply()
+                    },
+                    onAvatarChanged = { selectedUri ->
+                        if (selectedUri == null) {
+                            deleteStoredAvatar(context)
+                            avatarUri = null
+                            appearancePrefs.edit().remove(PREF_AVATAR_URI).apply()
+                        } else {
+                            scope.launch {
+                                val storedUri = withContext(Dispatchers.IO) {
+                                    copyAvatarToPrivateStorage(context, selectedUri)
+                                }
+                                if (storedUri != null) {
+                                    avatarUri = storedUri
+                                    appearancePrefs.edit()
+                                        .putString(PREF_AVATAR_URI, storedUri.toString())
+                                        .apply()
+                                }
+                            }
+                        }
+                    }
                 )
             }
         }
@@ -65,335 +206,133 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
     object Settings : Screen("settings", "Settings", Icons.Default.Settings)
 }
 
-@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun MainScreen(
     backgroundUri: Uri?,
     backgroundOpacity: Float,
+    avatarUri: Uri?,
     onBackgroundChanged: (Uri?) -> Unit,
-    onOpacityChanged: (Float) -> Unit
+    onOpacityChanged: (Float) -> Unit,
+    onAvatarChanged: (Uri?) -> Unit
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val items = listOf(Screen.Timeline, Screen.Calendar, Screen.Summarize, Screen.Me, Screen.Settings)
+    val pagerState = rememberPagerState(pageCount = { items.size })
+    val coroutineScope = rememberCoroutineScope()
 
-    val isMainScreen = items.any { it.route == currentDestination?.route }
+    val isMainScreen = currentDestination?.route == "main"
 
-    SharedTransitionLayout {
-        Scaffold(
-            // 关键：不要在这里设置 contentWindowInsets = WindowInsets(0)，
-            // 否则会阻止 IME Insets 向下传递。
-            bottomBar = {
-                AnimatedVisibility(
-                    visible = isMainScreen,
-                    enter = slideInVertically(initialOffsetY = { it }),
-                    exit = slideOutVertically(targetOffsetY = { it })
-                ) {
-                    NavigationBar {
-                        items.forEach { screen ->
-                            val isSelected = currentDestination?.hierarchy?.any { it.route == screen.route } == true
+    Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        bottomBar = {
+            AnimatedVisibility(
+                visible = isMainScreen,
+                enter = slideInVertically(
+                    animationSpec = tween(
+                        durationMillis = 280,
+                        easing = FastOutSlowInEasing
+                    ),
+                    initialOffsetY = { it }
+                ) + fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 220,
+                        easing = FastOutSlowInEasing
+                    )
+                ),
+                exit = slideOutVertically(
+                    animationSpec = tween(
+                        durationMillis = 240,
+                        easing = FastOutSlowInEasing
+                    ),
+                    targetOffsetY = { it }
+                ) + fadeOut(
+                    animationSpec = tween(
+                        durationMillis = 180,
+                        easing = FastOutSlowInEasing
+                    )
+                )
+            ) {
+                NavigationBar {
+                    items.forEachIndexed { index, screen ->
+                        val isSelected = pagerState.currentPage == index
 
-                            NavigationBarItem(
-                                icon = { Icon(screen.icon, contentDescription = null) },
-                                label = { Text(screen.label) },
-                                selected = isSelected,
-                                onClick = {
-                                    val currentRoute = navController.currentBackStackEntry?.destination?.route
-                                    if (currentRoute != screen.route) {
-                                        navController.navigate(screen.route) {
-                                            launchSingleTop = true
-                                        }
+                        NavigationBarItem(
+                            icon = { Icon(screen.icon, contentDescription = null) },
+                            label = { Text(screen.label) },
+                            selected = isSelected,
+                            onClick = {
+                                if (pagerState.currentPage != index) {
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(index)
                                     }
                                 }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    ) { innerPadding ->
+        CustomBackgroundContainer(
+            backgroundUri = backgroundUri,
+            overlayAlpha = backgroundOpacity,
+            modifier = Modifier
+        ) {
+            NavHost(
+                navController = navController,
+                startDestination = "main",
+                modifier = Modifier.fillMaxSize(),
+                enterTransition = { fadeIn(animationSpec = tween(180)) },
+                exitTransition = { fadeOut(animationSpec = tween(180)) },
+                popEnterTransition = { smoothPopEnterTransition() },
+                popExitTransition = { smoothPopExitTransition() }
+            ) {
+                composable("main") {
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxSize(),
+                        beyondViewportPageCount = 1
+                    ) { page ->
+                        when (items[page]) {
+                            Screen.Timeline -> TimelineScreen(
+                                onEntryClick = { entryId -> navController.navigate("editor?entryId=$entryId") },
+                                onAddEntryClick = { navController.navigate("editor") },
+                                modifier = Modifier.padding(innerPadding),
+                                avatarUri = avatarUri
+                            )
+
+                            Screen.Calendar -> CalendarScreen(
+                                onEntryClick = { entryId -> navController.navigate("editor?entryId=$entryId") },
+                                modifier = Modifier.padding(innerPadding)
+                            )
+
+                            Screen.Summarize -> SummarizeScreen(Modifier.padding(innerPadding))
+
+                            Screen.Me -> MeScreen(
+                                avatarUri = avatarUri,
+                                onNavigateToLanDiscovery = { navController.navigate("lan_discovery") },
+                                modifier = Modifier.padding(innerPadding)
+                            )
+
+                            Screen.Settings -> SettingsScreen(
+                                onBackgroundSelected = onBackgroundChanged,
+                                backgroundOpacity = backgroundOpacity,
+                                onOpacityChanged = onOpacityChanged,
+                                onAvatarSelected = onAvatarChanged,
+                                modifier = Modifier.padding(innerPadding)
                             )
                         }
                     }
                 }
-            }
-        ) { innerPadding ->
-            NavHost(
-                navController = navController,
-                startDestination = Screen.Timeline.route,
-                modifier = Modifier.fillMaxSize(),
-                // 默认动画：淡入淡出 (适用于底部栏标签切换)
-                enterTransition = { fadeIn(animationSpec = tween(300)) },
-                exitTransition = { fadeOut(animationSpec = tween(300)) }
-            ) {
-                composable(
-                    Screen.Timeline.route,
-                    enterTransition = {
-                        slideInHorizontally(
-                            initialOffsetX = { -it / 3 },
-                            animationSpec = tween(280)
-                        ) + fadeIn(animationSpec = tween(280))
-                    },
-                    exitTransition = {
-                        slideOutHorizontally(
-                            targetOffsetX = { it / 3 },
-                            animationSpec = tween(280)
-                        ) + fadeOut(animationSpec = tween(280))
-                    },
-                    popEnterTransition = {
-                        slideInHorizontally(
-                            initialOffsetX = { it / 3 },
-                            animationSpec = tween(280)
-                        ) + fadeIn(animationSpec = tween(280))
-                    },
-                    popExitTransition = {
-                        slideOutHorizontally(
-                            targetOffsetX = { -it / 3 },
-                            animationSpec = tween(280)
-                        ) + fadeOut(animationSpec = tween(280))
-                    }
-                ) {
-                    TimelineScreen(
-                        onEntryClick = { entryId -> navController.navigate("editor?entryId=$entryId") },
-                        onAddEntryClick = { navController.navigate("editor") },
-                        backgroundUri = backgroundUri,
-                        backgroundOpacity = backgroundOpacity,
-                        modifier = Modifier.padding(innerPadding),
-                        sharedTransitionScope = this@SharedTransitionLayout,
-                        animatedVisibilityScope = this@composable
-                    )
-                }
-                composable(
-                    Screen.Calendar.route,
-                    enterTransition = {
-                        val from = initialState.destination.route
-                        when (from) {
-                            Screen.Timeline.route -> slideInHorizontally(
-                                initialOffsetX = { it / 3 },
-                                animationSpec = tween(280)
-                            ) + fadeIn(animationSpec = tween(280))
-                            Screen.Summarize.route,
-                            Screen.Me.route,
-                            Screen.Settings.route -> slideInHorizontally(
-                                initialOffsetX = { -it / 3 },
-                                animationSpec = tween(280)
-                            ) + fadeIn(animationSpec = tween(280))
-                            else -> fadeIn(animationSpec = tween(280))
-                        }
-                    },
-                    exitTransition = {
-                        val to = targetState.destination.route
-                        when (to) {
-                            Screen.Timeline.route -> slideOutHorizontally(
-                                targetOffsetX = { it / 3 },
-                                animationSpec = tween(280)
-                            ) + fadeOut(animationSpec = tween(280))
-                            Screen.Summarize.route,
-                            Screen.Me.route,
-                            Screen.Settings.route -> slideOutHorizontally(
-                                targetOffsetX = { -it / 3 },
-                                animationSpec = tween(280)
-                            ) + fadeOut(animationSpec = tween(280))
-                            else -> fadeOut(animationSpec = tween(280))
-                        }
-                    },
-                    popEnterTransition = {
-                        val from = initialState.destination.route
-                        when (from) {
-                            Screen.Timeline.route -> slideInHorizontally(
-                                initialOffsetX = { it / 3 },
-                                animationSpec = tween(280)
-                            ) + fadeIn(animationSpec = tween(280))
-                            Screen.Summarize.route,
-                            Screen.Me.route,
-                            Screen.Settings.route -> slideInHorizontally(
-                                initialOffsetX = { -it / 3 },
-                                animationSpec = tween(280)
-                            ) + fadeIn(animationSpec = tween(280))
-                            else -> fadeIn(animationSpec = tween(280))
-                        }
-                    },
-                    popExitTransition = {
-                        val to = targetState.destination.route
-                        when (to) {
-                            Screen.Timeline.route -> slideOutHorizontally(
-                                targetOffsetX = { it / 3 },
-                                animationSpec = tween(280)
-                            ) + fadeOut(animationSpec = tween(280))
-                            Screen.Summarize.route,
-                            Screen.Me.route,
-                            Screen.Settings.route -> slideOutHorizontally(
-                                targetOffsetX = { -it / 3 },
-                                animationSpec = tween(280)
-                            ) + fadeOut(animationSpec = tween(280))
-                            else -> fadeOut(animationSpec = tween(280))
-                        }
-                    }
-                ) {
-                    CalendarScreen(
-                        onEntryClick = { entryId -> navController.navigate("editor?entryId=$entryId") },
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
-                composable(
-                    Screen.Summarize.route,
-                    enterTransition = {
-                        slideInHorizontally(
-                            initialOffsetX = { it / 2 },
-                            animationSpec = tween(280)
-                        ) + fadeIn(animationSpec = tween(280))
-                    },
-                    exitTransition = {
-                        slideOutHorizontally(
-                            targetOffsetX = { -it / 2 },
-                            animationSpec = tween(280)
-                        ) + fadeOut(animationSpec = tween(280))
-                    },
-                    popEnterTransition = {
-                        slideInHorizontally(
-                            initialOffsetX = { -it / 2 },
-                            animationSpec = tween(280)
-                        ) + fadeIn(animationSpec = tween(280))
-                    },
-                    popExitTransition = {
-                        slideOutHorizontally(
-                            targetOffsetX = { it / 2 },
-                            animationSpec = tween(280)
-                        ) + fadeOut(animationSpec = tween(280))
-                    }
-                ) {
-                    SummarizeScreen(Modifier.padding(innerPadding))
-                }
-                composable(
-                    Screen.Me.route,
-                    enterTransition = {
-                        val from = initialState.destination.route
-                        when (from) {
-                            Screen.Settings.route -> slideInHorizontally(
-                                initialOffsetX = { -it / 2 },
-                                animationSpec = tween(280)
-                            ) + fadeIn(animationSpec = tween(280))
-                            else -> slideInHorizontally(
-                                initialOffsetX = { it / 2 },
-                                animationSpec = tween(280)
-                            ) + fadeIn(animationSpec = tween(280))
-                        }
-                    },
-                    exitTransition = {
-                        val to = targetState.destination.route
-                        when (to) {
-                            Screen.Settings.route -> slideOutHorizontally(
-                                targetOffsetX = { -it / 2 },
-                                animationSpec = tween(280)
-                            ) + fadeOut(animationSpec = tween(280))
-                            else -> slideOutHorizontally(
-                                targetOffsetX = { it / 2 },
-                                animationSpec = tween(280)
-                            ) + fadeOut(animationSpec = tween(280))
-                        }
-                    },
-                    popEnterTransition = {
-                        val from = initialState.destination.route
-                        when (from) {
-                            Screen.Settings.route -> slideInHorizontally(
-                                initialOffsetX = { -it / 2 },
-                                animationSpec = tween(280)
-                            ) + fadeIn(animationSpec = tween(280))
-                            else -> slideInHorizontally(
-                                initialOffsetX = { it / 2 },
-                                animationSpec = tween(280)
-                            ) + fadeIn(animationSpec = tween(280))
-                        }
-                    },
-                    popExitTransition = {
-                        val to = targetState.destination.route
-                        when (to) {
-                            Screen.Settings.route -> slideOutHorizontally(
-                                targetOffsetX = { -it / 2 },
-                                animationSpec = tween(280)
-                            ) + fadeOut(animationSpec = tween(280))
-                            else -> slideOutHorizontally(
-                                targetOffsetX = { it / 2 },
-                                animationSpec = tween(280)
-                            ) + fadeOut(animationSpec = tween(280))
-                        }
-                    }
-                ) {
-                    MeScreen(
-                        onNavigateToLanDiscovery = { navController.navigate("lan_discovery") },
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
-                composable(
-                    Screen.Settings.route,
-                    enterTransition = {
-                        val from = initialState.destination.route
-                        when (from) {
-                            Screen.Me.route -> slideInHorizontally(
-                                initialOffsetX = { it / 2 },
-                                animationSpec = tween(280)
-                            ) + fadeIn(animationSpec = tween(280))
-                            else -> slideInHorizontally(
-                                initialOffsetX = { -it / 2 },
-                                animationSpec = tween(280)
-                            ) + fadeIn(animationSpec = tween(280))
-                        }
-                    },
-                    exitTransition = {
-                        val to = targetState.destination.route
-                        when (to) {
-                            Screen.Me.route -> slideOutHorizontally(
-                                targetOffsetX = { it / 2 },
-                                animationSpec = tween(280)
-                            ) + fadeOut(animationSpec = tween(280))
-                            else -> slideOutHorizontally(
-                                targetOffsetX = { -it / 2 },
-                                animationSpec = tween(280)
-                            ) + fadeOut(animationSpec = tween(280))
-                        }
-                    },
-                    popEnterTransition = {
-                        val from = initialState.destination.route
-                        when (from) {
-                            Screen.Me.route -> slideInHorizontally(
-                                initialOffsetX = { it / 2 },
-                                animationSpec = tween(280)
-                            ) + fadeIn(animationSpec = tween(280))
-                            else -> slideInHorizontally(
-                                initialOffsetX = { -it / 2 },
-                                animationSpec = tween(280)
-                            ) + fadeIn(animationSpec = tween(280))
-                        }
-                    },
-                    popExitTransition = {
-                        val to = targetState.destination.route
-                        when (to) {
-                            Screen.Me.route -> slideOutHorizontally(
-                                targetOffsetX = { it / 2 },
-                                animationSpec = tween(280)
-                            ) + fadeOut(animationSpec = tween(280))
-                            else -> slideOutHorizontally(
-                                targetOffsetX = { -it / 2 },
-                                animationSpec = tween(280)
-                            ) + fadeOut(animationSpec = tween(280))
-                        }
-                    }
-                ) {
-                    SettingsScreen(
-                        onBackgroundSelected = onBackgroundChanged,
-                        backgroundOpacity = backgroundOpacity,
-                        onOpacityChanged = onOpacityChanged,
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
                 composable(
                     route = "lan_discovery",
-                    enterTransition = {
-                        slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400))
-                    },
-                    exitTransition = {
-                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400))
-                    },
-                    popEnterTransition = {
-                        slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400))
-                    },
-                    popExitTransition = {
-                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400))
-                    }
+                    enterTransition = { smoothPageEnterTransition() },
+                    exitTransition = { smoothPageExitTransition() },
+                    popEnterTransition = { smoothPopEnterTransition() },
+                    popExitTransition = { smoothPopExitTransition() }
                 ) {
                     LanDiscoveryScreen(
                         onNavigateBack = { navController.popBackStack() },
@@ -410,18 +349,10 @@ fun MainScreen(
                         navArgument("port") { type = NavType.IntType },
                         navArgument("deviceId") { type = NavType.StringType }
                     ),
-                    enterTransition = {
-                        slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400))
-                    },
-                    exitTransition = {
-                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400))
-                    },
-                    popEnterTransition = {
-                        slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400))
-                    },
-                    popExitTransition = {
-                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400))
-                    }
+                    enterTransition = { smoothPageEnterTransition() },
+                    exitTransition = { smoothPageExitTransition() },
+                    popEnterTransition = { smoothPopEnterTransition() },
+                    popExitTransition = { smoothPopExitTransition() }
                 ) { backStackEntry ->
                     val ip = backStackEntry.arguments?.getString("ip") ?: ""
                     val port = backStackEntry.arguments?.getInt("port") ?: 8765
@@ -437,26 +368,15 @@ fun MainScreen(
                 composable(
                     route = "editor?entryId={entryId}",
                     arguments = listOf(navArgument("entryId") { type = NavType.LongType; defaultValue = -1L }),
-                    // 编辑页面使用左右滑动动画
-                    enterTransition = {
-                        slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400))
-                    },
-                    exitTransition = {
-                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400))
-                    },
-                    popEnterTransition = {
-                        slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400))
-                    },
-                    popExitTransition = {
-                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400))
-                    }
+                    enterTransition = { EnterTransition.None },
+                    exitTransition = { ExitTransition.None },
+                    popEnterTransition = { EnterTransition.None },
+                    popExitTransition = { ExitTransition.None }
                 ) { backStackEntry ->
                     val entryId = backStackEntry.arguments?.getLong("entryId") ?: -1L
                     EditorScreen(
                         entryId = entryId,
                         onNavigateBack = { navController.popBackStack() },
-                        backgroundUri = backgroundUri,
-                        backgroundOpacity = backgroundOpacity,
                         modifier = Modifier
                     )
                 }

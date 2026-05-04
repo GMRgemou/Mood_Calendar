@@ -3,7 +3,9 @@ package com.example.myapplication.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,12 +43,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.example.myapplication.util.DeviceIdManager
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -55,6 +59,7 @@ import java.util.Locale
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun MeScreen(
+    avatarUri: Uri?,
     onNavigateToLanDiscovery: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: DiaryViewModel = viewModel()
@@ -79,154 +84,199 @@ fun MeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Top
         ) {
-            // 头像占位
-            Box(
-                modifier = Modifier
-                    .size(96.dp)
-                    .clip(CircleShape)
-                    .padding(24.dp),
-                contentAlignment = Alignment.Center
+            // 头像
+            AnimatedVisibility(
+                visible = true,
+                enter = fadeInSlideUp(delayMs = 80)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Person,
-                    contentDescription = null,
-                    modifier = Modifier.size(80.dp),
-                    tint = MaterialTheme.colorScheme.primary
+                Box(
+                    modifier = Modifier
+                        .size(96.dp)
+                        .clip(CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (avatarUri != null) {
+                        AsyncImage(
+                            model = avatarUri,
+                            contentDescription = "头像",
+                            modifier = Modifier
+                                .size(96.dp)
+                                .clip(CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = null,
+                            modifier = Modifier.size(80.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 识别码区域
+            AnimatedVisibility(
+                visible = true,
+                enter = fadeInSlideUp(delayMs = 130)
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "个人识别码",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "该识别码与当前设备绑定，可用于身份验证",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = deviceId,
+                                style = MaterialTheme.typography.headlineSmall.copy(
+                                    fontSize = 22.sp,
+                                    letterSpacing = 1.5.sp
+                                ),
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                textAlign = TextAlign.Center
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            FilledTonalButton(
+                                onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    val clip = ClipData.newPlainText("个人识别码", deviceId)
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("复制识别码")
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
+            }
+
+            // 发布推文
+            AnimatedVisibility(
+                visible = true,
+                enter = fadeInSlideUp(delayMs = 230)
+            ) {
+                OutlinedTextField(
+                    value = tweetContent,
+                    onValueChange = { tweetContent = it },
+                    label = { Text("发布一条推文") },
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 3,
+                    trailingIcon = {
+                        IconButton(
+                            onClick = {
+                                if (tweetContent.isNotBlank()) {
+                                    viewModel.publishTweet(tweetContent.trim())
+                                    tweetContent = ""
+                                    Toast.makeText(context, "发布成功", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            enabled = tweetContent.isNotBlank()
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发布")
+                        }
+                    }
                 )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Text(
-                text = "个人识别码",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "该识别码与当前设备绑定，可用于身份验证",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = deviceId,
-                        style = MaterialTheme.typography.headlineSmall.copy(
-                            fontSize = 22.sp,
-                            letterSpacing = 1.5.sp
-                        ),
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        textAlign = TextAlign.Center
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    FilledTonalButton(
-                        onClick = {
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val clip = ClipData.newPlainText("个人识别码", deviceId)
-                            clipboard.setPrimaryClip(clip)
-                            Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ContentCopy,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("复制识别码")
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // 发布推文
-            OutlinedTextField(
-                value = tweetContent,
-                onValueChange = { tweetContent = it },
-                label = { Text("发布一条推文") },
-                modifier = Modifier.fillMaxWidth(),
-                maxLines = 3,
-                trailingIcon = {
-                    IconButton(
-                        onClick = {
-                            if (tweetContent.isNotBlank()) {
-                                viewModel.publishTweet(tweetContent.trim())
-                                tweetContent = ""
-                                Toast.makeText(context, "发布成功", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        enabled = tweetContent.isNotBlank()
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发布")
-                    }
-                }
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
             // 查看局域网
-            FilledTonalButton(
-                onClick = onNavigateToLanDiscovery,
-                modifier = Modifier.fillMaxWidth()
+            AnimatedVisibility(
+                visible = true,
+                enter = fadeInSlideUp(delayMs = 300)
             ) {
-                Icon(Icons.Default.Language, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("查看局域网推文")
+                FilledTonalButton(
+                    onClick = onNavigateToLanDiscovery,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Language, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("查看局域网推文")
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
             // 我的推文列表
             if (myTweets.isNotEmpty()) {
-                Text(
-                    text = "我的推文",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.align(Alignment.Start)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                myTweets.forEach { tweet ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = tweet.content,
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = formatTime(tweet.timestamp),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                AnimatedVisibility(
+                    visible = true,
+                    enter = fadeInSlideUp(delayMs = 370)
+                ) {
+                    Column {
+                        Text(
+                            text = "我的推文",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.align(Alignment.Start)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        myTweets.forEachIndexed { index, tweet ->
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = fadeInSlideUp(delayMs = 400 + index * 60)
+                            ) {
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text(
+                                            text = tweet.content,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = formatTime(tweet.timestamp),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }

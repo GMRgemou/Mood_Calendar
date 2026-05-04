@@ -91,6 +91,8 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.material)
     implementation(libs.nanohttpd)
+    implementation(libs.android.image.cropper)
+    implementation(libs.zxing.core)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.androidx.core)

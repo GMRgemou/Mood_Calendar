@@ -1,17 +1,20 @@
 package com.example.myapplication.ui
 
-import androidx.compose.animation.*
-import androidx.compose.foundation.layout.RowScope
+import android.net.Uri
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -19,131 +22,364 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.example.myapplication.data.DiaryEntry
+import com.example.myapplication.util.DeviceIdManager
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.roundToInt
-import android.net.Uri
-import androidx.compose.ui.layout.ContentScale
-import coil.compose.AsyncImage
+import com.example.myapplication.ui.staggeredItemAnimation
+import androidx.compose.animation.AnimatedVisibility
 
 private val ScreenTitleFontSize = 30.sp
 
 // 定义滑动状态
 enum class SwipeState { Settled, Open }
 
+// 生成二维码 Bitmap（在后台线程执行）
+private suspend fun generateQrCodeBitmap(text: String, size: Int): ImageBitmap? {
+    return withContext(Dispatchers.IO) {
+        try {
+            val writer = QRCodeWriter()
+            val bitMatrix = writer.encode(text, BarcodeFormat.QR_CODE, size, size)
+            val width = bitMatrix.width
+            val height = bitMatrix.height
+            val pixels = IntArray(width * height)
+            for (y in 0 until height) {
+                for (x in 0 until width) {
+                    pixels[y * width + x] = if (bitMatrix[x, y]) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
+                }
+            }
+            val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+            bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+            bitmap.asImageBitmap()
+        } catch (e: Exception) {
+            null
+        }
+    }
+}
+
+// 个人识别码弹窗：上部显示二维码，下部显示设备 ID 并可点击复制
+@Composable
+fun DeviceIdDialog(
+    deviceId: String,
+    onDismiss: () -> Unit
+) {
+    val clipboardManager = LocalClipboardManager.current
+    var qrBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    var copyFeedback by remember { mutableStateOf(false) }
+
+    // 异步生成二维码
+    LaunchedEffect(deviceId) {
+        qrBitmap = generateQrCodeBitmap(deviceId, 512)
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .padding(16.dp),
+            shape = MaterialTheme.shapes.extraLarge,
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // 标题
+                Text(
+                    text = "个人识别码",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // 二维码区域
+                Card(
+                    modifier = Modifier.size(220.dp),
+                    shape = MaterialTheme.shapes.medium,
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.White
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (qrBitmap != null) {
+                            Image(
+                                painter = BitmapPainter(qrBitmap!!),
+                                contentDescription = "个人识别码二维码",
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(12.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                        } else {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(32.dp),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // 设备 ID 文本，点击复制
+                Text(
+                    text = "点击下方识别码复制",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            clipboardManager.setText(AnnotatedString(deviceId))
+                            copyFeedback = true
+                        },
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = deviceId,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            imageVector = if (copyFeedback) Icons.Default.Check else Icons.Default.ContentCopy,
+                            contentDescription = "复制",
+                            modifier = Modifier.size(18.dp),
+                            tint = if (copyFeedback) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+
+                // 复制反馈提示
+                AnimatedVisibility(visible = copyFeedback) {
+                    Text(
+                        text = "已复制到剪贴板",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF4CAF50),
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 关闭按钮
+                TextButton(onClick = onDismiss) {
+                    Text("关闭")
+                }
+            }
+        }
+    }
+}
+
 // 时间线主页面：展示日记列表、背景图层与新增入口
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TimelineScreen(
     onEntryClick: (Long) -> Unit,
     onAddEntryClick: () -> Unit,
-    backgroundUri: Uri? = null,
-    backgroundOpacity: Float = 0.6f,
     modifier: Modifier = Modifier,
     viewModel: DiaryViewModel = viewModel(),
-    sharedTransitionScope: SharedTransitionScope? = null,
-    animatedVisibilityScope: AnimatedVisibilityScope? = null
+    avatarUri: Uri? = null
 ) {
     // 订阅 ViewModel 中的日记流，驱动列表实时刷新
     val entries by viewModel.entries.collectAsState()
     // 追踪当前打开了菜单的日记 ID
     var openEntryId by remember { mutableStateOf<Long?>(null) }
+    // 控制个人识别码弹窗
+    var showDeviceIdDialog by remember { mutableStateOf(false) }
+    // 获取设备 ID
+    val context = LocalContext.current
+    val deviceId = remember { DeviceIdManager.getDeviceId(context) }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        // 自定义背景图片
-        if (backgroundUri != null) {
-            AsyncImage(
-                model = backgroundUri,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+    Scaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
+        modifier = modifier
+            .fillMaxSize()
+            .statusBarsPadding(),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        topBar = {
+            UnifiedTopBar(
+                title = "我的日记",
+                actions = {
+                    // 头像按钮：右边距留白，避免紧贴屏幕边缘
+                    Box(
+                        modifier = Modifier
+                            .padding(end = 12.dp)
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .clickable { showDeviceIdDialog = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (avatarUri != null) {
+                            AsyncImage(
+                                model = avatarUri,
+                                contentDescription = "个人识别码",
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            // 默认头像占位
+                            Surface(
+                                modifier = Modifier.fillMaxSize(),
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primaryContainer
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Person,
+                                        contentDescription = "个人识别码",
+                                        modifier = Modifier.size(22.dp),
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            )
+        },
+        floatingActionButton = {
+            val fabScale = remember { Animatable(1f) }
+            val scope = rememberCoroutineScope()
+            FloatingActionButton(
+                onClick = {
+                    scope.launch {
+                        // Scale down with a quick spring
+                        fabScale.animateTo(
+                            targetValue = 0.75f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessHigh
+                            )
+                        )
+                        // Navigate to editor
+                        onAddEntryClick()
+                        // Spring back to original size
+                        fabScale.animateTo(
+                            targetValue = 1f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioLowBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        )
+                    }
+                },
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.scale(fabScale.value)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add Entry")
+            }
+        }
+    ) { padding ->
+        // 个人识别码弹窗
+        if (showDeviceIdDialog) {
+            DeviceIdDialog(
+                deviceId = deviceId,
+                onDismiss = { showDeviceIdDialog = false }
             )
         }
-        
-        // 半透明遮罩层 (无论是否有自定义背景都存在)
+
+        // 背景点击监听：点击空白区域关闭所有已打开的二级菜单
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background.copy(alpha = backgroundOpacity))
-        )
-
-        Scaffold(
-            containerColor = androidx.compose.ui.graphics.Color.Transparent,
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding(),
-            contentWindowInsets = WindowInsets(0, 0, 0, 0),
-            topBar = {
-                UnifiedTopBar(title = "我的日记")
-            },
-            floatingActionButton = {
-                FloatingActionButton(
-                    onClick = onAddEntryClick,
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Entry")
+                .padding(padding)
+                .pointerInput(Unit) {
+                    detectTapGestures { openEntryId = null }
                 }
-            }
-        ) { padding ->
-            // 背景点击监听：点击空白区域关闭所有已打开的二级菜单
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .pointerInput(Unit) {
-                        detectTapGestures { openEntryId = null }
-                    }
-            ) {
-                if (entries.isEmpty()) {
-                    EmptyState()
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        items(
-                            items = entries,
-                            key = { it.id }
-                        ) { entry ->
+        ) {
+            if (entries.isEmpty()) {
+                EmptyState()
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(
+                        items = entries,
+                        key = { it.id }
+                    ) { entry ->
+                        val itemIndex = entries.indexOf(entry)
+                        AnimatedVisibility(
+                            visible = true,
+                            enter = staggeredItemAnimation(delayMs = itemIndex * 50)
+                        ) {
                             SwipeableDiaryItem(
                                 entry = entry,
                                 isOpen = openEntryId == entry.id,
                                 onOpened = { openEntryId = entry.id },
                                 onClosed = { if (openEntryId == entry.id) openEntryId = null },
-                                onClick = {
-                                    if (openEntryId != null) {
-                                        // 如果有菜单打开，点击卡片先关闭菜单
-                                        openEntryId = null
-                                    } else {
-                                        // 否则执行正常的详情跳转
-                                        onEntryClick(entry.id)
-                                    }
-                                },
-                                onDelete = { 
+                                onClick = { onEntryClick(entry.id) },
+                                onDelete = {
                                     viewModel.deleteEntry(entry)
-                                    openEntryId = null 
+                                    openEntryId = null
                                 },
-                                onPin = { 
+                                onPin = {
                                     viewModel.togglePin(entry)
                                     openEntryId = null
                                 },
-                                sharedTransitionScope = sharedTransitionScope,
-                                animatedVisibilityScope = animatedVisibilityScope,
-                                modifier = Modifier.animateItem()
+                                modifier = Modifier
                             )
                         }
                     }
@@ -154,7 +390,7 @@ fun TimelineScreen(
 }
 
 // 可侧滑的日记卡片：左滑显示置顶/删除操作
-@OptIn(ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SwipeableDiaryItem(
     entry: DiaryEntry,
@@ -164,13 +400,11 @@ fun SwipeableDiaryItem(
     onClick: () -> Unit,
     onDelete: () -> Unit,
     onPin: () -> Unit,
-    sharedTransitionScope: SharedTransitionScope? = null,
-    animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier
 ) {
     // 用于 dp 与 px 互转，保证手势阈值和位移计算准确
     val density = LocalDensity.current
-    // 控制删除退场动画是否触发
+    // 控制删除状态
     var isDeleting by remember { mutableStateOf(false) }
     
     // 设置露出的按钮宽度
@@ -217,15 +451,10 @@ fun SwipeableDiaryItem(
         }
     }
 
-    // 删除时执行淡出+滑出动画，动画结束后再真正删除数据
-    AnimatedVisibility(
-        visible = !isDeleting,
-        exit = slideOutHorizontally(targetOffsetX = { -it }, animationSpec = spring(stiffness = Spring.StiffnessLow)) + 
-               fadeOut(animationSpec = spring(stiffness = Spring.StiffnessLow)),
-        modifier = modifier
-    ) {
+    // 删除时直接从列表中移除
+    if (!isDeleting) {
         Box(
-            modifier = Modifier
+            modifier = modifier
                 .fillMaxWidth()
                 .height(IntrinsicSize.Min)
                 .clip(MaterialTheme.shapes.medium)
@@ -285,9 +514,7 @@ fun SwipeableDiaryItem(
             ) {
                 DiaryEntryItem(
                     entry = entry, 
-                    onClick = onClick,
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope
+                    onClick = onClick
                 )
             }
         }
@@ -296,8 +523,7 @@ fun SwipeableDiaryItem(
     // 触发真正的删除操作
     if (isDeleting) {
         LaunchedEffect(Unit) {
-            // 给一点点时间让动画效果可见
-            kotlinx.coroutines.delay(400) 
+            // 立即执行删除，不使用延迟等待动画
             onDelete()
         }
     }
