@@ -18,13 +18,11 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -38,11 +36,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.PlainTooltip
@@ -376,11 +373,13 @@ fun EditorToolbar(
 fun EditorScreen(
     entryId: Long,
     onNavigateBack: () -> Unit,
+    diaryTitleEnabled: Boolean,
     modifier: Modifier = Modifier,
     viewModel: DiaryViewModel = viewModel()
 ) {
     val context = LocalContext.current
     var title by remember { mutableStateOf("") }
+    var isTitleTemporarilyUnlocked by remember { mutableStateOf(false) }
     var content by remember { mutableStateOf("") }
     var selectedDate by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var showDatePicker by remember { mutableStateOf(false) }
@@ -598,31 +597,12 @@ fun EditorScreen(
     var showAudioPropertiesDialog by remember { mutableStateOf(false) }
     var editingAudioUri by remember { mutableStateOf<Uri?>(null) }
     var editableLocationText by remember { mutableStateOf("") }
-    var editorVisible by remember { mutableStateOf(false) }
     var isNavigatingBack by remember { mutableStateOf(false) }
-    val slideDistancePx = with(LocalDensity.current) { 56.dp.toPx() }
-    val editorAnimationProgress by animateFloatAsState(
-        targetValue = if (editorVisible) 1f else 0f,
-        animationSpec = tween(
-            durationMillis = 260,
-            easing = FastOutSlowInEasing
-        ),
-        label = "editorOpenCloseProgress",
-        finishedListener = { progress ->
-            if (progress == 0f && isNavigatingBack) {
-                onNavigateBack()
-            }
-        }
-    )
-
-    LaunchedEffect(Unit) {
-        editorVisible = true
-    }
 
     fun closeEditor() {
         if (isNavigatingBack) return
         isNavigatingBack = true
-        editorVisible = false
+        onNavigateBack()
     }
 
     BackHandler(
@@ -632,6 +612,16 @@ fun EditorScreen(
     }
 
     val datePickerState = rememberDatePickerState(initialSelectedDateMillis = selectedDate)
+
+    LaunchedEffect(diaryTitleEnabled) {
+        if (diaryTitleEnabled) {
+            isTitleTemporarilyUnlocked = false
+        }
+    }
+
+    fun defaultTitleFromDateTime(dateMillis: Long): String {
+        return SimpleDateFormat("yy/M/d HH:mm", Locale.getDefault()).format(Date(dateMillis))
+    }
 
     // 相机权限状态
     val cameraPermissionState = rememberPermissionState(android.Manifest.permission.CAMERA)
@@ -928,9 +918,14 @@ fun EditorScreen(
         ) { DatePicker(state = datePickerState) }
     }
 
-    Box(modifier = modifier) {
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+        shadowElevation = 12.dp,
+        tonalElevation = 3.dp
+    ) {
         Scaffold(
-                containerColor = Color.Transparent,
+                containerColor = MaterialTheme.colorScheme.background,
                 modifier = Modifier
                     .fillMaxSize()
                     .statusBarsPadding(),
@@ -946,9 +941,14 @@ fun EditorScreen(
                         actions = {
                             IconButton(
                                 onClick = {
+                                    val titleToSave = if (!diaryTitleEnabled && title.isBlank()) {
+                                        defaultTitleFromDateTime(selectedDate)
+                                    } else {
+                                        title
+                                    }
                                     viewModel.saveEntry(
                                         id = entryId,
-                                        title = title,
+                                        title = titleToSave,
                                         content = content,
                                         date = selectedDate,
                                         imageUris = imageUris.joinToString(","),
@@ -972,12 +972,6 @@ fun EditorScreen(
                     .fillMaxSize()
                     .padding(padding)
                     .imePadding()
-                    .graphicsLayer {
-                        translationX = (1f - editorAnimationProgress) * slideDistancePx
-                        alpha = 0.72f + 0.28f * editorAnimationProgress
-                        scaleX = 0.985f + 0.015f * editorAnimationProgress
-                        scaleY = 0.985f + 0.015f * editorAnimationProgress
-                    }
             ) {
             Column(
                 modifier = Modifier
@@ -1040,19 +1034,50 @@ fun EditorScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Title") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f),
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                val isTitleLocked = !diaryTitleEnabled && !isTitleTemporarilyUnlocked
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { if (!isTitleLocked) title = it },
+                        label = {
+                            Text(if (isTitleLocked) "好的故事不需要标题" else "Title")
+                        },
+                        placeholder = {
+                            Text(if (isTitleLocked) "好的故事不需要标题" else "Title")
+                        },
+                        supportingText = if (isTitleLocked) {
+                            { Text("长按标题栏可临时解锁编辑") }
+                        } else if (!diaryTitleEnabled) {
+                            { Text("已临时解锁；留空保存时将使用 ${defaultTitleFromDateTime(selectedDate)}") }
+                        } else null,
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        readOnly = isTitleLocked,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = if (isTitleLocked) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                            unfocusedContainerColor = if (isTitleLocked) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.3f),
+                            focusedBorderColor = if (isTitleLocked) MaterialTheme.colorScheme.outline.copy(alpha = 0.7f) else MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = if (isTitleLocked) MaterialTheme.colorScheme.outline.copy(alpha = 0.7f) else MaterialTheme.colorScheme.outline,
+                            focusedLabelColor = if (isTitleLocked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
+                            unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            cursorColor = MaterialTheme.colorScheme.primary
+                        )
                     )
-                )
+                    if (isTitleLocked) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onLongPress = {
+                                            isTitleTemporarilyUnlocked = true
+                                            Toast.makeText(context, "标题已临时解锁", Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                }
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -1234,6 +1259,7 @@ fun EditorScreen(
                 }
 
                 EditorToolbar(
+                    modifier = Modifier.navigationBarsPadding(),
                     onAddImage = {
                         photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     },

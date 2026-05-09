@@ -234,6 +234,7 @@ fun DeviceIdDialog(
 fun TimelineScreen(
     onEntryClick: (Long) -> Unit,
     onAddEntryClick: () -> Unit,
+    onLanShareClick: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: DiaryViewModel = viewModel(),
     avatarUri: Uri? = null
@@ -258,6 +259,20 @@ fun TimelineScreen(
             UnifiedTopBar(
                 title = "我的日记",
                 actions = {
+                    IconButton(
+                        onClick = onLanShareClick,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Wifi,
+                            contentDescription = "局域网日记共享",
+                            modifier = Modifier.size(26.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
                     // 头像按钮：右边距留白，避免紧贴屏幕边缘
                     Box(
                         modifier = Modifier

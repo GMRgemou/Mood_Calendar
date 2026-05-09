@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Title
 import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.*
@@ -38,6 +39,8 @@ fun SettingsScreen(
     backgroundOpacity: Float,
     onOpacityChanged: (Float) -> Unit,
     onAvatarSelected: (Uri?) -> Unit,
+    diaryTitleEnabled: Boolean,
+    onDiaryTitleEnabledChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -153,6 +156,29 @@ fun SettingsScreen(
             item {
                 AnimatedVisibility(
                     visible = true,
+                    enter = fadeInSlideUp(delayMs = 125)
+                ) {
+                    SwitchSettingsItem(
+                        title = "启用日记标题",
+                        subtitle = if (diaryTitleEnabled) {
+                            "编辑日记时可以直接填写标题"
+                        } else {
+                            "标题输入框默认锁定；长按可临时解锁，空标题会用日期时间保存"
+                        },
+                        icon = Icons.Default.Title,
+                        checked = diaryTitleEnabled,
+                        onCheckedChange = onDiaryTitleEnabledChanged
+                    )
+                }
+            }
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            item {
+                AnimatedVisibility(
+                    visible = true,
                     enter = fadeInSlideUp(delayMs = 150)
                 ) {
                     SettingsItem(
@@ -238,6 +264,51 @@ fun SettingsScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun SwitchSettingsItem(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Surface(
+        onClick = { onCheckedChange(!checked) },
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange
+            )
         }
     }
 }

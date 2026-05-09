@@ -157,6 +157,77 @@ fun androidActivityPopExitTransition(): ExitTransition {
     )
 }
 
+/**
+ * Diary editor card transition: the editor is presented like a solid card
+ * handed up from the bottom of the screen. The subtle scale/fade only happens
+ * during opening to make the card feel layered without changing layout.
+ */
+fun diaryCardEnterTransition(): EnterTransition {
+    return slideInVertically(
+        animationSpec = tween(
+            durationMillis = 500,
+            easing = FastOutSlowInEasing
+        ),
+        initialOffsetY = { fullHeight -> fullHeight }
+    ) + scaleIn(
+        animationSpec = tween(
+            durationMillis = 500,
+            easing = FastOutSlowInEasing
+        ),
+        initialScale = 0.96f
+    ) + fadeIn(
+        animationSpec = tween(
+            durationMillis = 420,
+            easing = FastOutSlowInEasing
+        ),
+        initialAlpha = 0.7f
+    )
+}
+
+/**
+ * Forward exit counterpart for the diary card. This is only used if the editor
+ * navigates forward to another destination, but keeping it card-like makes the
+ * transition set consistent.
+ */
+fun diaryCardExitTransition(): ExitTransition {
+    return slideOutVertically(
+        animationSpec = tween(
+            durationMillis = 460,
+            easing = FastOutSlowInEasing
+        ),
+        targetOffsetY = { fullHeight -> -fullHeight / 8 }
+    ) + scaleOut(
+        animationSpec = tween(
+            durationMillis = 460,
+            easing = FastOutSlowInEasing
+        ),
+        targetScale = 0.98f
+    ) + fadeOut(
+        animationSpec = tween(
+            durationMillis = 360,
+            easing = FastOutSlowInEasing
+        ),
+        targetAlpha = 0.85f
+    )
+}
+
+/**
+ * Closing animation for the diary editor.
+ *
+ * The card stays fully opaque and full-size while sliding down. This avoids the
+ * main page bleeding through the editor during close, which previously made the
+ * animation look like partially unloaded/overlapping UI.
+ */
+fun diaryCardPopExitTransition(): ExitTransition {
+    return slideOutVertically(
+        animationSpec = tween(
+            durationMillis = 650,
+            easing = FastOutSlowInEasing
+        ),
+        targetOffsetY = { fullHeight -> fullHeight }
+    )
+}
+
 enum class SlideDirection {
     RIGHT_TO_LEFT,
     LEFT_TO_RIGHT
