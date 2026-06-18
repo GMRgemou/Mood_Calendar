@@ -157,29 +157,76 @@ fun androidActivityPopExitTransition(): ExitTransition {
     )
 }
 
+private fun cardEnterTransition(
+    slideDurationMillis: Int,
+    scaleDurationMillis: Int,
+    fadeDurationMillis: Int,
+    initialOffsetY: (Int) -> Int,
+    initialScale: Float,
+    initialAlpha: Float
+): EnterTransition {
+    return slideInVertically(
+        animationSpec = tween(
+            durationMillis = slideDurationMillis,
+            easing = FastOutSlowInEasing
+        ),
+        initialOffsetY = initialOffsetY
+    ) + scaleIn(
+        animationSpec = tween(
+            durationMillis = scaleDurationMillis,
+            easing = FastOutSlowInEasing
+        ),
+        initialScale = initialScale
+    ) + fadeIn(
+        animationSpec = tween(
+            durationMillis = fadeDurationMillis,
+            easing = FastOutSlowInEasing
+        ),
+        initialAlpha = initialAlpha
+    )
+}
+
+private fun cardExitTransition(
+    slideDurationMillis: Int,
+    scaleDurationMillis: Int,
+    fadeDurationMillis: Int,
+    targetOffsetY: (Int) -> Int,
+    targetScale: Float,
+    targetAlpha: Float
+): ExitTransition {
+    return slideOutVertically(
+        animationSpec = tween(
+            durationMillis = slideDurationMillis,
+            easing = FastOutSlowInEasing
+        ),
+        targetOffsetY = targetOffsetY
+    ) + scaleOut(
+        animationSpec = tween(
+            durationMillis = scaleDurationMillis,
+            easing = FastOutSlowInEasing
+        ),
+        targetScale = targetScale
+    ) + fadeOut(
+        animationSpec = tween(
+            durationMillis = fadeDurationMillis,
+            easing = FastOutSlowInEasing
+        ),
+        targetAlpha = targetAlpha
+    )
+}
+
 /**
  * Diary editor card transition: the editor is presented like a solid card
  * handed up from the bottom of the screen. The subtle scale/fade only happens
  * during opening to make the card feel layered without changing layout.
  */
 fun diaryCardEnterTransition(): EnterTransition {
-    return slideInVertically(
-        animationSpec = tween(
-            durationMillis = 500,
-            easing = FastOutSlowInEasing
-        ),
-        initialOffsetY = { fullHeight -> fullHeight }
-    ) + scaleIn(
-        animationSpec = tween(
-            durationMillis = 500,
-            easing = FastOutSlowInEasing
-        ),
-        initialScale = 0.96f
-    ) + fadeIn(
-        animationSpec = tween(
-            durationMillis = 420,
-            easing = FastOutSlowInEasing
-        ),
+    return cardEnterTransition(
+        slideDurationMillis = 500,
+        scaleDurationMillis = 500,
+        fadeDurationMillis = 420,
+        initialOffsetY = { fullHeight -> fullHeight },
+        initialScale = 0.96f,
         initialAlpha = 0.7f
     )
 }
@@ -190,23 +237,12 @@ fun diaryCardEnterTransition(): EnterTransition {
  * transition set consistent.
  */
 fun diaryCardExitTransition(): ExitTransition {
-    return slideOutVertically(
-        animationSpec = tween(
-            durationMillis = 460,
-            easing = FastOutSlowInEasing
-        ),
-        targetOffsetY = { fullHeight -> -fullHeight / 8 }
-    ) + scaleOut(
-        animationSpec = tween(
-            durationMillis = 460,
-            easing = FastOutSlowInEasing
-        ),
-        targetScale = 0.98f
-    ) + fadeOut(
-        animationSpec = tween(
-            durationMillis = 360,
-            easing = FastOutSlowInEasing
-        ),
+    return cardExitTransition(
+        slideDurationMillis = 460,
+        scaleDurationMillis = 460,
+        fadeDurationMillis = 360,
+        targetOffsetY = { fullHeight -> -fullHeight / 8 },
+        targetScale = 0.98f,
         targetAlpha = 0.85f
     )
 }
