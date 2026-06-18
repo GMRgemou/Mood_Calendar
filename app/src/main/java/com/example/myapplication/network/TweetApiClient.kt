@@ -1,12 +1,12 @@
 package com.example.myapplication.network
 
 import com.example.myapplication.data.Tweet
-import com.squareup.moshi.Moshi
-import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.squareup.moshi.JsonAdapter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.util.concurrent.TimeUnit
 
 /**
  * 用于向局域网内其他设备请求推文数据的 HTTP 客户端。
@@ -14,39 +14,27 @@ import okhttp3.Request
 class TweetApiClient {
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+        .connectTimeout(3, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
         .build()
 
-    private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-    private val deviceInfoAdapter = moshi.adapter(DeviceInfo::class.java)
-    private val tweetListAdapter = moshi.adapter<List<Tweet>>(
-        com.squareup.moshi.Types.newParameterizedType(List::class.java, Tweet::class.java)
-    )
+    private val deviceInfoAdapter = LanJson.deviceInfoAdapter
+    private val tweetListAdapter = LanJson.tweetListAdapter
 
-    suspend fun fetchDeviceInfo(ip: String, port: Int): DeviceInfo? = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
-            .url("http://$ip:$port/api/info")
-            .get()
-            .build()
-        runCatching {
-            client.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    response.body?.string()?.let { deviceInfoAdapter.fromJson(it) }
-                } else null
-            }
-        }.getOrNull()
+    suspend fun fetchDeviceInfo(ip: String, port: Int): DeviceInfo? {
+        return getJson("http://$ip:$port/api/info", deviceInfoAdapter)
     }
 
-    suspend fun fetchTweets(ip: String, port: Int): List<Tweet>? = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
-            .url("http://$ip:$port/api/tweets")
-            .get()
-            .build()
+    suspend fun fetchTweets(ip: String, port: Int): List<Tweet>? {
+        return getJson("http://$ip:$port/api/tweets", tweetListAdapter)
+    }
+
+    private suspend fun <T> getJson(url: String, adapter: JsonAdapter<T>): T? = withContext(Dispatchers.IO) {
+        val request = Request.Builder().url(url).get().build()
         runCatching {
             client.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
-                    response.body?.string()?.let { tweetListAdapter.fromJson(it) }
+                    response.body?.string()?.let(adapter::fromJson)
                 } else null
             }
         }.getOrNull()

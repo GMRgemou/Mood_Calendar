@@ -13,7 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -371,11 +371,10 @@ fun TimelineScreen(
                     contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(
+                    itemsIndexed(
                         items = entries,
-                        key = { it.id }
-                    ) { entry ->
-                        val itemIndex = entries.indexOf(entry)
+                        key = { _, entry -> entry.id }
+                    ) { itemIndex, entry ->
                         AnimatedVisibility(
                             visible = true,
                             enter = staggeredItemAnimation(delayMs = itemIndex * 50)

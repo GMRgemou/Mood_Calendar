@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -70,7 +73,11 @@ fun MeScreen(
     var tweetContent by remember { mutableStateOf("") }
 
     Scaffold(
-        modifier = modifier,
+        modifier = modifier
+            .fillMaxSize()
+            .statusBarsPadding(),
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
         topBar = {
             UnifiedTopBar(title = "我的")
         }
@@ -117,14 +124,14 @@ fun MeScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 识别码区域
+            // 识别码区�?
             AnimatedVisibility(
                 visible = true,
                 enter = fadeInSlideUp(delayMs = 130)
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "个人识别码",
+                        text = "个人识别�?,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground
@@ -133,7 +140,7 @@ fun MeScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Text(
-                        text = "该识别码与当前设备绑定，可用于身份验证",
+                        text = "该识别码与当前设备绑定，可用于身份验�?,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
@@ -171,9 +178,9 @@ fun MeScreen(
                             FilledTonalButton(
                                 onClick = {
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    val clip = ClipData.newPlainText("个人识别码", deviceId)
+                                    val clip = ClipData.newPlainText("个人识别�?, deviceId)
                                     clipboard.setPrimaryClip(clip)
-                                    Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "已复制到剪贴�?, Toast.LENGTH_SHORT).show()
                                 }
                             ) {
                                 Icon(
@@ -182,7 +189,7 @@ fun MeScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("复制识别码")
+                                Text("复制识别�?)
                             }
                         }
                     }
@@ -199,7 +206,7 @@ fun MeScreen(
                 OutlinedTextField(
                     value = tweetContent,
                     onValueChange = { tweetContent = it },
-                    label = { Text("发布一条推文") },
+                    label = { Text("发布一条推�?) },
                     modifier = Modifier.fillMaxWidth(),
                     maxLines = 3,
                     trailingIcon = {

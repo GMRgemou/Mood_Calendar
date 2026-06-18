@@ -1,36 +1,33 @@
 package com.example.myapplication.ui
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Title
 import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Title
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import android.widget.Toast
 import com.canhub.cropper.CropImageContract
 import com.canhub.cropper.CropImageContractOptions
 import com.canhub.cropper.CropImageOptions
 import com.canhub.cropper.CropImageView
-
-private val ScreenTitleFontSize = 30.sp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,7 +86,11 @@ fun SettingsScreen(
     }
 
     Scaffold(
-        modifier = modifier,
+        modifier = modifier
+            .fillMaxSize()
+            .statusBarsPadding(),
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
         topBar = {
             UnifiedTopBar(title = "设置")
         }
@@ -100,169 +101,103 @@ fun SettingsScreen(
                 .padding(padding)
         ) {
             item {
-                AnimatedVisibility(
-                    visible = true,
-                    enter = fadeInSlideUp(delayMs = 50)
-                ) {
-                    SettingsItem(
-                        title = "自定义头像",
-                        subtitle = "选择图片后将裁剪为圆形头像，重启后仍会保留",
-                        icon = Icons.Default.Face,
-                        onClick = {
-                            avatarPickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
-                        }
-                    )
-                }
-            }
-            item {
-                AnimatedVisibility(
-                    visible = true,
-                    enter = fadeInSlideUp(delayMs = 100)
-                ) {
-                    Surface(
-                        onClick = { onAvatarSelected(null) },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .padding(16.dp)
-                                .fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.RestartAlt,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Text(
-                                text = "重置头像",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    }
-                }
-            }
-            item {
-                Spacer(modifier = Modifier.height(8.dp))
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-            item {
-                AnimatedVisibility(
-                    visible = true,
-                    enter = fadeInSlideUp(delayMs = 125)
-                ) {
-                    SwitchSettingsItem(
-                        title = "启用日记标题",
-                        subtitle = if (diaryTitleEnabled) {
-                            "编辑日记时可以直接填写标题"
-                        } else {
-                            "标题输入框默认锁定；长按可临时解锁，空标题会用日期时间保存"
-                        },
-                        icon = Icons.Default.Title,
-                        checked = diaryTitleEnabled,
-                        onCheckedChange = onDiaryTitleEnabledChanged
-                    )
-                }
-            }
-            item {
-                Spacer(modifier = Modifier.height(8.dp))
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-            item {
-                AnimatedVisibility(
-                    visible = true,
-                    enter = fadeInSlideUp(delayMs = 150)
-                ) {
-                    SettingsItem(
-                        title = "自定义主页背景",
-                        subtitle = "选择图片后会复制到应用私有目录，重启后仍会保留",
-                        icon = Icons.Default.Image,
-                        onClick = {
-                            photoPickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
-                        }
-                    )
-                }
-            }
-            item {
-                AnimatedVisibility(
-                    visible = true,
-                    enter = fadeInSlideUp(delayMs = 200)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Opacity,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Text(
-                                text = "背景遮罩透明度",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Slider(
-                            value = backgroundOpacity,
-                            onValueChange = onOpacityChanged,
-                            valueRange = 0f..1f,
-                            modifier = Modifier.padding(top = 8.dp)
+                SettingsItem(
+                    title = "自定义头像",
+                    subtitle = "选择图片后将裁剪为圆形头像，重启后仍会保留",
+                    icon = Icons.Default.Face,
+                    onClick = {
+                        avatarPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                         )
+                    }
+                )
+            }
+            item {
+                SettingsRow(
+                    title = "重置头像",
+                    icon = Icons.Default.RestartAlt,
+                    onClick = { onAvatarSelected(null) },
+                    iconTint = MaterialTheme.colorScheme.error,
+                    titleColor = MaterialTheme.colorScheme.error
+                )
+            }
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            item {
+                SwitchSettingsItem(
+                    title = "启用日记标题",
+                    subtitle = if (diaryTitleEnabled) {
+                        "编辑日记时可以直接填写标题"
+                    } else {
+                        "标题输入框默认锁定；长按可临时解锁，空标题会用日期时间保存"
+                    },
+                    icon = Icons.Default.Title,
+                    checked = diaryTitleEnabled,
+                    onCheckedChange = onDiaryTitleEnabledChanged
+                )
+            }
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            item {
+                SettingsItem(
+                    title = "自定义主页背景",
+                    subtitle = "选择图片后会复制到应用私有目录，重启后仍会保留",
+                    icon = Icons.Default.Image,
+                    onClick = {
+                        photoPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    }
+                )
+            }
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Opacity,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
                         Text(
-                            text = "当前透明度: ${(backgroundOpacity * 100).toInt()}%",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.align(Alignment.End)
+                            text = "背景遮罩透明度",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
                         )
                     }
+                    Slider(
+                        value = backgroundOpacity,
+                        onValueChange = onOpacityChanged,
+                        valueRange = 0f..1f,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    Text(
+                        text = "当前透明度: ${(backgroundOpacity * 100).toInt()}%",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.align(Alignment.End)
+                    )
                 }
             }
             item {
-                AnimatedVisibility(
-                    visible = true,
-                    enter = fadeInSlideUp(delayMs = 250)
-                ) {
-                    Surface(
-                        onClick = { onBackgroundSelected(null) },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .padding(16.dp)
-                                .fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.RestartAlt,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Text(
-                                text = "重置背景",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    }
-                }
+                SettingsRow(
+                    title = "重置背景",
+                    icon = Icons.Default.RestartAlt,
+                    onClick = { onBackgroundSelected(null) },
+                    iconTint = MaterialTheme.colorScheme.error,
+                    titleColor = MaterialTheme.colorScheme.error
+                )
             }
         }
     }
@@ -276,40 +211,16 @@ fun SwitchSettingsItem(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    Surface(
-        onClick = { onCheckedChange(!checked) },
-        modifier = Modifier.fillMaxWidth()
+    SettingsRow(
+        title = title,
+        subtitle = subtitle,
+        icon = icon,
+        onClick = { onCheckedChange(!checked) }
     ) {
-        Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Switch(
-                checked = checked,
-                onCheckedChange = onCheckedChange
-            )
-        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
     }
 }
 
@@ -319,6 +230,30 @@ fun SettingsItem(
     subtitle: String,
     icon: ImageVector,
     onClick: () -> Unit
+) {
+    SettingsRow(
+        title = title,
+        subtitle = subtitle,
+        icon = icon,
+        onClick = onClick
+    ) {
+        Icon(
+            imageVector = Icons.Default.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+        )
+    }
+}
+
+@Composable
+private fun SettingsRow(
+    title: String,
+    subtitle: String? = null,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    iconTint: Color? = null,
+    titleColor: Color? = null,
+    trailingContent: @Composable RowScope.() -> Unit = {}
 ) {
     Surface(
         onClick = onClick,
@@ -333,7 +268,7 @@ fun SettingsItem(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = iconTint ?: MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(24.dp)
             )
             Spacer(modifier = Modifier.width(16.dp))
@@ -341,19 +276,18 @@ fun SettingsItem(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = titleColor ?: Color.Unspecified
                 )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
-            Icon(
-                imageVector = Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-            )
+            trailingContent()
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.example.myapplication
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -19,9 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-import androidx.navigation.NavDestination.Companion.hierarchy
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
@@ -48,6 +47,7 @@ import com.example.myapplication.ui.smoothPageEnterTransition
 import com.example.myapplication.ui.smoothPageExitTransition
 import com.example.myapplication.ui.smoothPopEnterTransition
 import com.example.myapplication.ui.smoothPopExitTransition
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -60,58 +60,81 @@ private const val DEFAULT_BACKGROUND_OPACITY = 0.6f
 private const val PREF_AVATAR_URI = "avatar_uri"
 private const val PREF_DIARY_TITLE_ENABLED = "diary_title_enabled"
 
-private fun deleteStoredBackground(context: android.content.Context) {
-    File(context.filesDir, "backgrounds").deleteRecursively()
+private val BackgroundMedia = StoredMedia(
+    subDir = "backgrounds",
+    tempFileName = "custom_background.tmp",
+    targetFileName = "custom_background"
+)
+
+private val AvatarMedia = StoredMedia(
+    subDir = "avatars",
+    tempFileName = "custom_avatar.tmp",
+    targetFileName = "custom_avatar"
+)
+
+private data class StoredMedia(
+    val subDir: String,
+    val tempFileName: String,
+    val targetFileName: String
+)
+
+private fun deleteStoredMedia(context: Context, media: StoredMedia) {
+    File(context.filesDir, media.subDir).deleteRecursively()
 }
 
-private fun copyBackgroundToPrivateStorage(
-    context: android.content.Context,
-    sourceUri: Uri
-): Uri? {
-    return runCatching {
-        val backgroundDir = File(context.filesDir, "backgrounds").apply { mkdirs() }
-        val tempFile = File(backgroundDir, "custom_background.tmp")
-        val targetFile = File(backgroundDir, "custom_background")
+private fun copyMediaToPrivateStorage(
+    context: Context,
+    sourceUri: Uri,
+    media: StoredMedia
+): Uri? = runCatching {
+    val mediaDir = File(context.filesDir, media.subDir).apply { mkdirs() }
+    val tempFile = File(mediaDir, media.tempFileName)
+    val targetFile = File(mediaDir, media.targetFileName)
 
-        context.contentResolver.openInputStream(sourceUri)?.use { input ->
-            tempFile.outputStream().use { output -> input.copyTo(output) }
-        } ?: return null
+    context.contentResolver.openInputStream(sourceUri)?.use { input ->
+        tempFile.outputStream().use { output -> input.copyTo(output) }
+    } ?: return null
 
-        if (targetFile.exists()) targetFile.delete()
-        if (!tempFile.renameTo(targetFile)) {
-            tempFile.copyTo(targetFile, overwrite = true)
-            tempFile.delete()
+    if (targetFile.exists()) targetFile.delete()
+    if (!tempFile.renameTo(targetFile)) {
+        tempFile.copyTo(targetFile, overwrite = true)
+        tempFile.delete()
+    }
+
+    Uri.fromFile(targetFile)
+}.getOrNull()
+
+private fun SharedPreferences.putNullableString(key: String, value: String?) {
+    val editor = edit()
+    if (value == null) editor.remove(key) else editor.putString(key, value)
+    editor.apply()
+}
+
+private fun updateStoredMedia(
+    context: Context,
+    prefs: SharedPreferences,
+    scope: CoroutineScope,
+    selectedUri: Uri?,
+    media: StoredMedia,
+    prefKey: String,
+    onStoredUriChanged: (Uri?) -> Unit
+) {
+    if (selectedUri == null) {
+        deleteStoredMedia(context, media)
+        onStoredUriChanged(null)
+        prefs.putNullableString(prefKey, null)
+        return
+    }
+
+    scope.launch {
+        val storedUri = withContext(Dispatchers.IO) {
+            copyMediaToPrivateStorage(context, selectedUri, media)
         }
-
-        Uri.fromFile(targetFile)
-    }.getOrNull()
-}
-
-private fun copyAvatarToPrivateStorage(
-    context: android.content.Context,
-    sourceUri: Uri
-): Uri? {
-    return runCatching {
-        val avatarDir = File(context.filesDir, "avatars").apply { mkdirs() }
-        val tempFile = File(avatarDir, "custom_avatar.tmp")
-        val targetFile = File(avatarDir, "custom_avatar")
-
-        context.contentResolver.openInputStream(sourceUri)?.use { input ->
-            tempFile.outputStream().use { output -> input.copyTo(output) }
-        } ?: return null
-
-        if (targetFile.exists()) targetFile.delete()
-        if (!tempFile.renameTo(targetFile)) {
-            tempFile.copyTo(targetFile, overwrite = true)
-            tempFile.delete()
+        if (storedUri != null) {
+            onStoredUriChanged(storedUri)
+            prefs.putNullableString(prefKey, storedUri.toString())
         }
-
-        Uri.fromFile(targetFile)
-    }.getOrNull()
-}
-
-private fun deleteStoredAvatar(context: android.content.Context) {
-    File(context.filesDir, "avatars").deleteRecursively()
+    }
 }
 
 class MainActivity : ComponentActivity() {
@@ -152,23 +175,15 @@ class MainActivity : ComponentActivity() {
                     avatarUri = avatarUri,
                     diaryTitleEnabled = diaryTitleEnabled,
                     onBackgroundChanged = { selectedUri ->
-                        if (selectedUri == null) {
-                            deleteStoredBackground(context)
-                            backgroundUri = null
-                            appearancePrefs.edit().remove(PREF_BACKGROUND_URI).apply()
-                        } else {
-                            scope.launch {
-                                val storedUri = withContext(Dispatchers.IO) {
-                                    copyBackgroundToPrivateStorage(context, selectedUri)
-                                }
-                                if (storedUri != null) {
-                                    backgroundUri = storedUri
-                                    appearancePrefs.edit()
-                                        .putString(PREF_BACKGROUND_URI, storedUri.toString())
-                                        .apply()
-                                }
-                            }
-                        }
+                        updateStoredMedia(
+                            context = context,
+                            prefs = appearancePrefs,
+                            scope = scope,
+                            selectedUri = selectedUri,
+                            media = BackgroundMedia,
+                            prefKey = PREF_BACKGROUND_URI,
+                            onStoredUriChanged = { backgroundUri = it }
+                        )
                     },
                     onOpacityChanged = { opacity ->
                         val safeOpacity = opacity.coerceIn(0f, 1f)
@@ -178,23 +193,15 @@ class MainActivity : ComponentActivity() {
                             .apply()
                     },
                     onAvatarChanged = { selectedUri ->
-                        if (selectedUri == null) {
-                            deleteStoredAvatar(context)
-                            avatarUri = null
-                            appearancePrefs.edit().remove(PREF_AVATAR_URI).apply()
-                        } else {
-                            scope.launch {
-                                val storedUri = withContext(Dispatchers.IO) {
-                                    copyAvatarToPrivateStorage(context, selectedUri)
-                                }
-                                if (storedUri != null) {
-                                    avatarUri = storedUri
-                                    appearancePrefs.edit()
-                                        .putString(PREF_AVATAR_URI, storedUri.toString())
-                                        .apply()
-                                }
-                            }
-                        }
+                        updateStoredMedia(
+                            context = context,
+                            prefs = appearancePrefs,
+                            scope = scope,
+                            selectedUri = selectedUri,
+                            media = AvatarMedia,
+                            prefKey = PREF_AVATAR_URI,
+                            onStoredUriChanged = { avatarUri = it }
+                        )
                     },
                     onDiaryTitleEnabledChanged = { enabled ->
                         diaryTitleEnabled = enabled
@@ -378,12 +385,5 @@ fun MainScreen(
                 }
             }
         }
-    }
-}
-
-@Composable
-fun PlaceholderScreen(name: String, modifier: Modifier = Modifier) {
-    Surface(modifier = modifier.fillMaxSize()) {
-        Text(text = "$name Screen coming soon!", modifier = Modifier.padding(16.dp))
     }
 }

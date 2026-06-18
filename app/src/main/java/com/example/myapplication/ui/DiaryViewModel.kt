@@ -12,30 +12,23 @@ import com.example.myapplication.network.LanHttpServer
 import com.example.myapplication.network.TweetApiClient
 import com.example.myapplication.util.DeviceIdManager
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class DiaryViewModel(application: Application) : AndroidViewModel(application) {
-    private val diaryDao = DiaryDatabase.getDatabase(application).diaryDao()
-    private val tweetDao = DiaryDatabase.getDatabase(application).tweetDao()
+    private val database = DiaryDatabase.getDatabase(application)
+    private val diaryDao = database.diaryDao()
+    private val tweetDao = database.tweetDao()
+    private val tweetApiClient = TweetApiClient()
     private val deviceId = DeviceIdManager.getDeviceId(application)
 
-    val entries: StateFlow<List<DiaryEntry>> = diaryDao.getAllEntries()
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )
+    val entries: StateFlow<List<DiaryEntry>> = diaryDao.getAllEntries().stateInViewModel()
 
     fun getEntriesByDateRange(start: Long, end: Long): StateFlow<List<DiaryEntry>> {
-        return diaryDao.getEntriesByDateRange(start, end)
-            .stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5000),
-                initialValue = emptyList()
-            )
+        return diaryDao.getEntriesByDateRange(start, end).stateInViewModel()
     }
 
     suspend fun getEntryById(id: Long): DiaryEntry? {
@@ -93,12 +86,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- Tweet & LAN ----------
 
-    val myTweets: StateFlow<List<Tweet>> = tweetDao.getMyTweets()
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )
+    val myTweets: StateFlow<List<Tweet>> = tweetDao.getMyTweets().stateInViewModel()
 
     private val _peerLoading = MutableStateFlow(false)
     val peerLoading: StateFlow<Boolean> = _peerLoading
@@ -108,7 +96,8 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
     private val httpServer: LanHttpServer
     private val discoveryManager: LanDiscoveryManager
-    val discoveredDevices = MutableStateFlow<Map<String, DiscoveredDevice>>(emptyMap())
+    private val _discoveredDevices = MutableStateFlow<Map<String, DiscoveredDevice>>(emptyMap())
+    val discoveredDevices: StateFlow<Map<String, DiscoveredDevice>> = _discoveredDevices
 
     init {
         val serverPort = findAvailablePort(8765)
@@ -131,7 +120,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         discoveryManager.startDiscovery()
         viewModelScope.launch {
             discoveryManager.discoveredDevices.collect {
-                discoveredDevices.value = it
+                _discoveredDevices.value = it
             }
         }
     }
@@ -158,7 +147,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _peerLoading.value = true
             _peerError.value = null
-            val tweets = TweetApiClient().fetchTweets(ip, port)
+            val tweets = tweetApiClient.fetchTweets(ip, port)
             if (tweets != null) {
                 tweetDao.clearPeerTweets(authorId)
                 tweets.map {
@@ -175,12 +164,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
     fun getPeerTweetsFlow(authorId: String): StateFlow<List<Tweet>> {
         return peerTweetFlows.getOrPut(authorId) {
-            tweetDao.getPeerTweets(authorId)
-                .stateIn(
-                    scope = viewModelScope,
-                    started = SharingStarted.WhileSubscribed(5000),
-                    initialValue = emptyList()
-                )
+            tweetDao.getPeerTweets(authorId).stateInViewModel()
         }
     }
 
@@ -195,15 +179,16 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun findAvailablePort(start: Int): Int {
-        var port = start
-        while (port < start + 100) {
-            try {
-                java.net.ServerSocket(port).close()
-                return port
-            } catch (_: Exception) {
-                port++
-            }
-        }
-        return 0
+        return (start until start + 100).firstOrNull { port ->
+            runCatching { java.net.ServerSocket(port).close() }.isSuccess
+        } ?: 0
+    }
+
+    private fun <T> Flow<List<T>>.stateInViewModel(): StateFlow<List<T>> {
+        return stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
     }
 }

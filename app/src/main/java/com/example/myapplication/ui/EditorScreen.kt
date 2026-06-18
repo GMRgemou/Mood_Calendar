@@ -71,7 +71,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 private fun defaultAudioName(uri: Uri): String {
-    return "语音记录 ${uri.lastPathSegment?.takeLast(10).orEmpty()}".trim()
+    return "Audio record ${uri.lastPathSegment?.takeLast(10).orEmpty()}".trim()
 }
 
 private fun splitStoredAudioMetadata(value: String): List<String> {
@@ -92,13 +92,13 @@ fun AudioPropertiesDialog(
     
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("编辑录音属性") },
+        title = { Text("Edit audio properties") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("录音名称") },
+                    label = { Text("Audio name") },
                     modifier = Modifier.fillMaxWidth()
                 )
                 Row(
@@ -106,7 +106,7 @@ fun AudioPropertiesDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("显示语音转文字内容")
+                    Text("Show transcription")
                     Switch(
                         checked = visibility,
                         onCheckedChange = { visibility = it }
@@ -115,17 +115,17 @@ fun AudioPropertiesDialog(
                 OutlinedTextField(
                     value = transcription,
                     onValueChange = { transcription = it },
-                    label = { Text("语音转文字内容") },
+                    label = { Text("Transcription") },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 3
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(name, visibility, transcription) }) { Text("确定") }
+            TextButton(onClick = { onConfirm(name, visibility, transcription) }) { Text("OK") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
 }
@@ -135,7 +135,7 @@ fun MoodSelectionDialog(
     onMoodSelected: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val moods = listOf("😊", "🥰", "😎", "🤔", "😴", "😢", "😠", "🥳", "🌈", "☕", "🍕", "🎮")
+    val moods = listOf("Happy", "Loved", "Cool", "Thinking", "Sleepy", "Sad", "Angry", "Sick", "Rainbow", "Sunny", "Pizza", "Music")
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Select Mood") },
@@ -226,7 +226,7 @@ fun PhotoViewerDialog(
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                 }
 
-                // 3. 底部功能栏
+                // 3. 底部功能�?
                 Row(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -236,7 +236,7 @@ fun PhotoViewerDialog(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 保存到本地
+                    // 保存到本�?
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.clickable { onSave() }
@@ -478,7 +478,7 @@ fun EditorScreen(
     }
 
     LaunchedEffect(Unit) {
-        // 1. 加载现有日记内容 (如果是编辑模式)
+        // 1. 加载现有日记内容 (如果是编辑模�?
         if (entryId != -1L) {
             val entry = viewModel.getEntryById(entryId)
             entry?.let {
@@ -514,14 +514,14 @@ fun EditorScreen(
             }
         }
 
-        // 2. 初始化 Vosk（离线中文语音识别）
+        // 2. 初始�?Vosk（离线中文语音识别）
         withContext(Dispatchers.IO) {
             try {
-                // 尝试解压或加载已存在的模型
+                // 尝试解压或加载已存在的模�?
                 StorageService.unpack(context, "model-cn", "model", 
                     object : StorageService.Callback<Model> {
                         override fun onComplete(model: Model) {
-                            // 使用 unpack 成功提供的 model
+                            // 使用 unpack 成功提供�?model
                             voskModel = model
                             try {
                                 voskRecognizer = Recognizer(model, 16000f)
@@ -529,7 +529,7 @@ fun EditorScreen(
                                 Log.d("EditorScreen", "Vosk model loaded successfully via unpack callback")
                             } catch (e: Exception) {
                                 Log.e("EditorScreen", "Vosk recognizer init failed with provided model", e)
-                                // 如果直接使用失败，再尝试搜索子目录（以防结构嵌套）
+                                // 如果直接使用失败，再尝试搜索子目录（以防结构嵌套�?
                                 scope.launch(Dispatchers.IO) {
                                     val targetDir = File(context.filesDir, "model")
                                     val actualModelDir = findModelDir(targetDir)
@@ -546,7 +546,7 @@ fun EditorScreen(
                                         }
                                     }
                                     withContext(Dispatchers.Main) {
-                                        Toast.makeText(context, "语音识别初始化失败", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "Speech recognition init failed", Toast.LENGTH_SHORT).show()
                                     }
                                 }
                             }
@@ -619,15 +619,16 @@ fun EditorScreen(
         }
     }
 
-    fun defaultTitleFromDateTime(dateMillis: Long): String {
-        return SimpleDateFormat("yy/M/d HH:mm", Locale.getDefault()).format(Date(dateMillis))
-    }
+    val defaultTitleFormatter = remember { SimpleDateFormat("yy/M/d HH:mm", Locale.getDefault()) }
+    val dateFormatter = remember { SimpleDateFormat("EEEE, MMM dd, yyyy", Locale.getDefault()) }
+    val defaultTitle = remember(selectedDate) { defaultTitleFormatter.format(Date(selectedDate)) }
+    val dateString = remember(selectedDate) { dateFormatter.format(Date(selectedDate)) }
 
-    // 相机权限状态
+    // 相机权限状�?
     val cameraPermissionState = rememberPermissionState(android.Manifest.permission.CAMERA)
-    // 录音权限状态
+    // 录音权限状�?
     val audioPermissionState = rememberPermissionState(android.Manifest.permission.RECORD_AUDIO)
-    // 位置权限状态 (使用多权限请求)
+    // 位置权限状�?(使用多权限请�?
     val locationPermissionsState = rememberMultiplePermissionsState(
         permissions = listOf(
             android.Manifest.permission.ACCESS_FINE_LOCATION,
@@ -738,8 +739,9 @@ fun EditorScreen(
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture(),
         onResult = { success ->
-            if (success && tempPhotoUri != null) {
-                imageUris = imageUris + tempPhotoUri!!
+            val photoUri = tempPhotoUri
+            if (success && photoUri != null) {
+                imageUris = imageUris + photoUri
             }
         }
     )
@@ -809,7 +811,7 @@ fun EditorScreen(
             val audioFormat = AudioFormat.ENCODING_PCM_16BIT
             val bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
             if (bufferSize == AudioRecord.ERROR || bufferSize == AudioRecord.ERROR_BAD_VALUE) {
-                Toast.makeText(context, "当前设备不支持录音参数", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Recording is not supported on this device", Toast.LENGTH_SHORT).show()
                 return
             }
             
@@ -822,7 +824,7 @@ fun EditorScreen(
             )
             if (recorder.state != AudioRecord.STATE_INITIALIZED) {
                 recorder.release()
-                Toast.makeText(context, "录音初始化失败", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Recording init failed", Toast.LENGTH_SHORT).show()
                 return
             }
             
@@ -833,7 +835,7 @@ fun EditorScreen(
                 recorder.startRecording()
                 val fos = FileOutputStream(file)
                 fos.use { output ->
-                    // 写入 44 字节的 WAV 头部占位符
+                    // 写入 44 字节�?WAV 头部占位�?
                     output.write(ByteArray(44))
                     
                     val buffer = ByteArray(bufferSize)
@@ -846,7 +848,7 @@ fun EditorScreen(
                         }
                     }
                     
-                    // 录音结束后更新 WAV 头部
+                    // 录音结束后更�?WAV 头部
                     updateWavHeader(file, totalAudioLen)
                 }
                 runCatching { recorder.stop() }
@@ -870,7 +872,7 @@ fun EditorScreen(
                         fis.skip(44)
                         fis.readBytes()
                     }
-                    var transcription = if (isVoskReady) "正在处理语音..." else "语音记录 (Vosk 未就绪)"
+                    var transcription = if (isVoskReady) "正在处理语音..." else "语音记录 (Vosk 未就�?"
                     
                     if (isVoskReady) {
                         voskRecognizer?.let { recognizer ->
@@ -880,7 +882,7 @@ fun EditorScreen(
                             try {
                                 val json = JSONObject(jsonResult)
                                 val text = json.optString("text", "")
-                                transcription = if (text.isNotEmpty()) text else "语音记录 (无文字内容)"
+                                transcription = if (text.isNotEmpty()) text else "语音记录 (无文字内�?"
                             } catch (e: Exception) {
                                 Log.e("EditorScreen", "Vosk result parse failed", e)
                                 transcription = "语音记录 (解析失败)"
@@ -942,7 +944,7 @@ fun EditorScreen(
                             IconButton(
                                 onClick = {
                                     val titleToSave = if (!diaryTitleEnabled && title.isBlank()) {
-                                        defaultTitleFromDateTime(selectedDate)
+                                        defaultTitle
                                     } else {
                                         title
                                     }
@@ -981,7 +983,6 @@ fun EditorScreen(
             ) {
                 Spacer(modifier = Modifier.height(8.dp))
 
-                val dateString = SimpleDateFormat("EEEE, MMM dd, yyyy", Locale.getDefault()).format(Date(selectedDate))
                 Surface(
                     onClick = { showDatePicker = true },
                     color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f),
@@ -1040,15 +1041,15 @@ fun EditorScreen(
                         value = title,
                         onValueChange = { if (!isTitleLocked) title = it },
                         label = {
-                            Text(if (isTitleLocked) "好的故事不需要标题" else "Title")
+                            Text(if (isTitleLocked) "Title is locked" else "Title")
                         },
                         placeholder = {
-                            Text(if (isTitleLocked) "好的故事不需要标题" else "Title")
+                            Text(if (isTitleLocked) "Title is locked" else "Title")
                         },
                         supportingText = if (isTitleLocked) {
-                            { Text("长按标题栏可临时解锁编辑") }
+                            { Text("Long press title field to temporarily unlock editing") }
                         } else if (!diaryTitleEnabled) {
-                            { Text("已临时解锁；留空保存时将使用 ${defaultTitleFromDateTime(selectedDate)}") }
+                            { Text("Temporarily unlocked; empty title will use $defaultTitle") }
                         } else null,
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
@@ -1071,7 +1072,7 @@ fun EditorScreen(
                                     detectTapGestures(
                                         onLongPress = {
                                             isTitleTemporarilyUnlocked = true
-                                            Toast.makeText(context, "标题已临时解锁", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Title temporarily unlocked", Toast.LENGTH_SHORT).show()
                                         }
                                     )
                                 }
@@ -1126,7 +1127,7 @@ fun EditorScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                 }
 
-                    // 全屏查看对话框
+                    // 全屏查看对话�?
                     selectedViewerUri?.let { uri ->
                         PhotoViewerDialog(
                             uri = uri,
@@ -1274,7 +1275,7 @@ fun EditorScreen(
                                 if (isVoskReady) {
                                     startRecording()
                                 } else {
-                                    Toast.makeText(context, "语音识别模型正在初始化，请稍后...", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "语音识别模型正在初始化，请稍�?..", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         } else {
@@ -1316,8 +1317,7 @@ fun EditorScreen(
                 )
             }
 
-            if (showAudioPropertiesDialog && editingAudioUri != null) {
-                val uri = editingAudioUri!!
+            editingAudioUri?.takeIf { showAudioPropertiesDialog }?.let { uri ->
                 val defaultAudioName = audioNames[uri].takeUnless { it.isNullOrBlank() } ?: defaultAudioName(uri)
                 AudioPropertiesDialog(
                     initialName = defaultAudioName,

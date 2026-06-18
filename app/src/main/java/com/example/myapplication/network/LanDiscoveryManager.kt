@@ -1,12 +1,11 @@
 package com.example.myapplication.network
 
 import android.util.Log
-import com.squareup.moshi.Moshi
-import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.*
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.withPermit
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -14,8 +13,8 @@ import java.net.InetAddress
 import java.net.NetworkInterface
 
 /**
- * 局域网 UDP 广播发现管理器。
- * 定期广播本机信息，同时监听其他设备的广播。
+ * 局域网 UDP 广播发现管理器�?
+ * 定期广播本机信息，同时监听其他设备的广播�?
  */
 class LanDiscoveryManager(
     private val deviceId: String,
@@ -25,11 +24,12 @@ class LanDiscoveryManager(
     companion object {
         const val DISCOVERY_PORT = 8766
         const val BROADCAST_INTERVAL_MS = 3000L
+        private const val SCAN_PARALLELISM = 20
         const val TAG = "LanDiscovery"
     }
 
-    private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-    private val adapter = moshi.adapter(BroadcastPacket::class.java)
+    private val adapter = LanJson.broadcastPacketAdapter
+    private val tweetApiClient = TweetApiClient()
 
     private val _discoveredDevices = MutableStateFlow<Map<String, DiscoveredDevice>>(emptyMap())
     val discoveredDevices: StateFlow<Map<String, DiscoveredDevice>> = _discoveredDevices
@@ -99,12 +99,12 @@ class LanDiscoveryManager(
                 // 忽略自己
                 if (broadcast.deviceId == deviceId) continue
 
-                val current = _discoveredDevices.value.toMutableMap()
-                current[broadcast.deviceId] = DiscoveredDevice(
-                    address = packet.address,
-                    port = broadcast.port
-                )
-                _discoveredDevices.value = current
+                _discoveredDevices.update { devices ->
+                    devices + (broadcast.deviceId to DiscoveredDevice(
+                        address = packet.address,
+                        port = broadcast.port
+                    ))
+                }
             } catch (e: Exception) {
                 if (currentCoroutineContext().isActive) Log.e(TAG, "Listen receive failed", e)
             }
@@ -112,18 +112,18 @@ class LanDiscoveryManager(
     }
 
     /**
-     * 主动扫描当前局域网网段，探测指定端口上的设备。
+     * 主动扫描当前局域网网段，探测指定端口上的设备�?
      */
     suspend fun scanLanForDevice(targetDeviceId: String): DiscoveredDevice? = withContext(Dispatchers.IO) {
         val localIp = getLocalIpAddress() ?: return@withContext null
         val prefix = localIp.substringBeforeLast(".")
-        val semaphore = kotlinx.coroutines.sync.Semaphore(20)
+        val semaphore = kotlinx.coroutines.sync.Semaphore(SCAN_PARALLELISM)
         val jobs = (1..254).map { lastOctet ->
             async {
                 semaphore.withPermit {
                     val testIp = "$prefix.$lastOctet"
                     val info = runCatching {
-                        TweetApiClient().fetchDeviceInfo(testIp, serverPort)
+                        tweetApiClient.fetchDeviceInfo(testIp, serverPort)
                     }.getOrNull()
                     if (info?.deviceId == targetDeviceId) {
                         DiscoveredDevice(address = InetAddress.getByName(testIp), port = serverPort)
